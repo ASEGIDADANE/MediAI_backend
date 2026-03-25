@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: medi_ai
+      POSTGRES_PASSWORD: medi_ai
+      POSTGRES_DB: medi_ai
+    ports:
+      - '5432:5432'
+    volumes:
+      - medi_ai_pg_data:/var/lib/postgresql/data
+
+volumes:
+  medi_ai_pg_data:
