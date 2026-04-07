@@ -35,11 +35,15 @@ enum OnboardingPreferredFeature {
 /// Email is normalized to lowercase in application code. Unique index on `email`.
 /// - Email/password: `passwordHash` set, `googleId` null.
 /// - Google-only: `googleId` set, `passwordHash` null until the user sets a password.
+/// - `emailVerifiedAt`: set when email is confirmed (e.g. Google OAuth); null for unverified local signups.
+/// - `lastLoginAt`: updated on successful password login or OAuth completion.
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
   passwordHash String?
   googleId     String?  @unique
+  emailVerifiedAt DateTime?
+  lastLoginAt     DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

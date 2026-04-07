@@ -20,7 +20,12 @@ const BCRYPT_ROUNDS = 12;
 const RESET_TOKEN_BYTES = 32;
 const RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-export type AuthUserView = { id: string; email: string };
+export type AuthUserView = {
+  id: string;
+  email: string;
+  emailVerified: boolean;
+  lastLoginAt: string | null;
+};
 
 @Injectable()
 export class AuthService {
@@ -37,6 +42,20 @@ export class AuthService {
 
   private hashResetToken(raw: string): string {
     return createHash('sha256').update(raw).digest('hex');
+  }
+
+  private toUserView(user: {
+    id: string;
+    email: string;
+    emailVerifiedAt: Date | null;
+    lastLoginAt: Date | null;
+  }): AuthUserView {
+    return {
+      id: user.id,
+      email: user.email,
+      emailVerified: user.emailVerifiedAt !== null,
+      lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
+    };
   }
 
   private getGoogleClient(): OAuth2Client | null {
@@ -117,24 +136,35 @@ export class AuthService {
       where: { OR: [{ googleId }, { email }] },
     });
 
+    const now = new Date();
     if (!user) {
       user = await this.prisma.user.create({
-        data: { email, googleId, passwordHash: null },
+        data: {
+          email,
+          googleId,
+          passwordHash: null,
+          emailVerifiedAt: now,
+          lastLoginAt: now,
+        },
       });
     } else {
-      const updates: { googleId?: string; email?: string } = {};
+      const updates: {
+        googleId?: string;
+        email?: string;
+        emailVerifiedAt?: Date;
+        lastLoginAt: Date;
+      } = { lastLoginAt: now };
       if (user.googleId !== googleId) updates.googleId = googleId;
       if (this.normalizeEmail(user.email) !== email) updates.email = email;
-      if (Object.keys(updates).length > 0) {
-        user = await this.prisma.user.update({
-          where: { id: user.id },
-          data: updates,
-        });
-      }
+      if (!user.emailVerifiedAt) updates.emailVerifiedAt = now;
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: updates,
+      });
     }
 
     const accessToken = await this.signAccessToken(user.id, user.email);
-    return { accessToken, user: { id: user.id, email: user.email } };
+    return { accessToken, user: this.toUserView(user) };
   }
 
   private async signAccessToken(userId: string, email: string): Promise<string> {
@@ -149,12 +179,13 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+    const now = new Date();
     const user = await this.prisma.user.create({
-      data: { email, passwordHash },
+      data: { email, passwordHash, lastLoginAt: now },
     });
 
     const accessToken = await this.signAccessToken(user.id, user.email);
-    return { accessToken, user: { id: user.id, email: user.email } };
+    return { accessToken, user: this.toUserView(user) };
   }
 
   async login(dto: LoginDto): Promise<{ accessToken: string; user: AuthUserView }> {
@@ -169,8 +200,13 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    const accessToken = await this.signAccessToken(user.id, user.email);
-    return { accessToken, user: { id: user.id, email: user.email } };
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    const accessToken = await this.signAccessToken(updated.id, updated.email);
+    return { accessToken, user: this.toUserView(updated) };
   }
 
   async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
@@ -233,6 +269,6 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException();
     }
-    return { id: user.id, email: user.email };
+    return this.toUserView(user);
   }
 }
