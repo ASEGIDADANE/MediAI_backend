@@ -31,6 +31,10 @@ enum OnboardingPreferredFeature {
   top_doctors
 }
 
+/// Authentication identity used by registration, login, Google OAuth, and password reset.
+/// Email is normalized to lowercase in application code. Unique index on `email`.
+/// - Email/password: `passwordHash` set, `googleId` null.
+/// - Google-only: `googleId` set, `passwordHash` null until the user sets a password.
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
