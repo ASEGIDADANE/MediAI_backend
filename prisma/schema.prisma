@@ -9,6 +9,28 @@ datasource db {
   provider = "postgresql"
 }
 
+enum OnboardingUserRole {
+  personal
+  professional
+}
+
+enum OnboardingMeasurementSystem {
+  imperial
+  metric
+}
+
+enum OnboardingSexAtBirth {
+  male
+  female
+  other
+}
+
+enum OnboardingPreferredFeature {
+  ai_doctor
+  lab_interpretation
+  top_doctors
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -18,6 +40,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   resetTokens PasswordResetToken[]
+  profile     UserProfile?
 }
 
 model PasswordResetToken {
@@ -30,4 +53,30 @@ model PasswordResetToken {
   createdAt DateTime  @default(now())
 
   @@index([tokenHash])
+}
+
+/// Health / onboarding data separated from auth credentials (1:1 with User).
+model UserProfile {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role           OnboardingUserRole
+  preferredName  String
+  confirmedAdult Boolean
+  region         String
+
+  ageYears            Int
+  measurementSystem OnboardingMeasurementSystem
+  /// Numeric string as entered in the wizard (e.g. "155" lb or "70" kg).
+  weight              String
+  heightFeet          String?
+  heightInches        String?
+  heightCm            String?
+
+  sexAtBirth       OnboardingSexAtBirth
+  preferredFeature OnboardingPreferredFeature
+
+  onboardingCompletedAt DateTime @default(now())
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }

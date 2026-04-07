@@ -27,9 +27,9 @@ async function bootstrap() {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('MediAI API')
     .setDescription(
-      'MediAI backend — authentication module (email/password, Google OAuth, password reset). ' +
-        'Aligns with MediAI frontend routes: /signin, /signup, /signup/email, /forgot-password. ' +
-        'All JSON endpoints are under the global `/api` prefix.',
+      'MediAI backend — auth, onboarding profile persistence, and future modules. ' +
+        'Onboarding config mirrors the MediAI wizard; profile endpoints require JWT. ' +
+        'All JSON routes use the global `/api` prefix.',
     )
     .setVersion('1.0')
     .addBearerAuth(
@@ -44,6 +44,10 @@ async function bootstrap() {
       'access-token',
     )
     .addTag('auth', 'Registration, login, JWT, Google OAuth, password reset')
+    .addTag(
+      'onboarding',
+      'Wizard config (public) and user profile persistence (JWT)',
+    )
     .addTag('health', 'Service health')
     .build();
 
