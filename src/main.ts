@@ -49,6 +49,11 @@ async function bootstrap() {
       'Wizard config (public) and user profile persistence (JWT)',
     )
     .addTag('health', 'Service health')
+    .addTag('landing', 'Marketing / landing JSON')
+    .addTag('dashboard', 'Dashboard home config')
+    .addTag('chat', 'Chat config and mock reply')
+    .addTag('ai-doctor', 'AI Doctor wizard config')
+    .addTag('admin', 'Admin dashboard (JWT + admin role)')
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig, {

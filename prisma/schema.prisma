@@ -9,6 +9,11 @@ datasource db {
   provider = "postgresql"
 }
 
+enum UserAppRole {
+  user
+  admin
+}
+
 enum OnboardingUserRole {
   personal
   professional
@@ -32,15 +37,17 @@ enum OnboardingPreferredFeature {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
+  id           String      @id @default(uuid())
+  email        String      @unique
   passwordHash String?
-  googleId     String?  @unique
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  googleId     String?     @unique
+  appRole      UserAppRole @default(user)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
-  resetTokens PasswordResetToken[]
-  profile     UserProfile?
+  resetTokens    PasswordResetToken[]
+  profile        UserProfile?
+  supportReports SupportReport[]
 }
 
 model PasswordResetToken {
@@ -79,4 +86,15 @@ model UserProfile {
   onboardingCompletedAt DateTime @default(now())
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+}
+
+/// Optional persistence for POST /api/chat/report-issue.
+model SupportReport {
+  id        String   @id @default(uuid())
+  message   String
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }

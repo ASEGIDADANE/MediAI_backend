@@ -60,6 +60,7 @@ export const sexOptions = [
   { id: 'other' as const, title: 'Other' },
 ];
 
+/** IDs align with MediAI `onboarding-content.ts` (Next GET /api/onboarding/config). */
 export const featureOptions = [
   {
     id: 'ai-doctor' as const,
@@ -67,7 +68,7 @@ export const featureOptions = [
     description: 'Ask any health questions and get tailored insights.',
   },
   {
-    id: 'lab-interpretation' as const,
+    id: 'lab-test-interpretation' as const,
     title: 'Lab Test Interpretation',
     description: 'Easily understand and interpret your lab test results.',
   },
@@ -77,6 +78,75 @@ export const featureOptions = [
     description: 'Access 350+ top doctors from the US and Ethiopia.',
   },
 ];
+
+export const professionalTitleOptions = [
+  { id: 'dr' as const, label: 'Dr.' },
+  { id: 'prof' as const, label: 'Prof.' },
+  { id: 'mr' as const, label: 'Mr.' },
+  { id: 'ms' as const, label: 'Ms.' },
+];
+
+export const professionalSpecialtyOptions = [
+  'Dermatology',
+  'Oncology',
+  'Neurosurgery',
+  'Cardiology',
+  'Pediatrics',
+  'Internal Medicine',
+  'General Surgery',
+  'Obstetrics and Gynecology',
+] as const;
+
+export const professionalCompletionItems = [
+  'Brainstorm with your AI assistant',
+  'Get clinical insights and suggestions',
+  'Upload lab results in seconds',
+  'Receive AI Powered interpretations',
+] as const;
+
+export const smokingIntensityOptions = [
+  'Non-smoker',
+  '1-10 cigarettes',
+  'About 1 pack',
+  'More than 1 pack',
+  'Electronic cigarettes/vaping',
+] as const;
+
+export const alcoholIntakeOptions = [
+  'None',
+  'Occasionally',
+  '1-2 days per week',
+  '3-5 days per week',
+  'Daily',
+] as const;
+
+export const physicalActivityOptions = [
+  'Inactive',
+  'Lightly active',
+  'Moderately active',
+  'Very active',
+] as const;
+
+export const dietaryHabitOptions = [
+  'Non-specific diet',
+  'Balanced meals',
+  'Frequent Fast Food',
+  'Specific diet plan',
+] as const;
+
+export const sleepPatternOptions = [
+  '7-9 hours',
+  'Less than 6 hours',
+  'More than 9 hours',
+  'Varies significantly or interrupted sleep',
+] as const;
+
+export const stressLevelOptions = [
+  'Rarely stressed',
+  'Manageable stress',
+  'Regular (daily) stress',
+  'Almost always stressed',
+] as const;
 
 export const generalInformationSteps = [
   'Age',
@@ -93,5 +163,14 @@ export function getOnboardingConfigSnapshot() {
     sexOptions,
     featureOptions,
     generalInformationSteps: [...generalInformationSteps],
+    professionalTitleOptions,
+    professionalSpecialtyOptions: [...professionalSpecialtyOptions],
+    professionalCompletionItems: [...professionalCompletionItems],
+    smokingIntensityOptions: [...smokingIntensityOptions],
+    alcoholIntakeOptions: [...alcoholIntakeOptions],
+    physicalActivityOptions: [...physicalActivityOptions],
+    dietaryHabitOptions: [...dietaryHabitOptions],
+    sleepPatternOptions: [...sleepPatternOptions],
+    stressLevelOptions: [...stressLevelOptions],
   };
 }

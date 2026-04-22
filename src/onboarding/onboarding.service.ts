@@ -156,6 +156,7 @@ export class OnboardingService {
     switch (id) {
       case 'ai-doctor':
         return OnboardingPreferredFeature.ai_doctor;
+      case 'lab-test-interpretation':
       case 'lab-interpretation':
         return OnboardingPreferredFeature.lab_interpretation;
       case 'top-doctors':
@@ -167,12 +168,12 @@ export class OnboardingService {
 
   private fromPrismaFeature(
     v: OnboardingPreferredFeature,
-  ): 'ai-doctor' | 'lab-interpretation' | 'top-doctors' {
+  ): 'ai-doctor' | 'lab-test-interpretation' | 'top-doctors' {
     switch (v) {
       case OnboardingPreferredFeature.ai_doctor:
         return 'ai-doctor';
       case OnboardingPreferredFeature.lab_interpretation:
-        return 'lab-interpretation';
+        return 'lab-test-interpretation';
       case OnboardingPreferredFeature.top_doctors:
         return 'top-doctors';
       default:

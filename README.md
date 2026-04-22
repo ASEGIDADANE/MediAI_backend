@@ -23,6 +23,41 @@
 
 ## Description
 
+MediAI backend: NestJS + Prisma + PostgreSQL, JWT auth, onboarding, and **public CMS-style JSON** routes aligned with the MediAI Next.js `src/app/api` handlers.
+
+### Environment
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `PORT` | `4000` | |
+| `FRONTEND_URL` | `http://localhost:3000` | CORS |
+| `DATABASE_URL` | — | PostgreSQL |
+| `JWT_SECRET` | (required in prod) | |
+| `JWT_EXPIRES` | `7d` | |
+
+### MediAI config & chat API (global prefix `api`)
+
+Swagger: `http://localhost:4000/docs` (or your `PORT`).
+
+**Public (no token):** `GET /api/landing`, `GET /api/onboarding/config`, `GET /api/dashboard/config`, `GET /api/chat/config`, `GET /api/ai-doctor/config`, `POST /api/chat/reply`, `POST /api/chat/report-issue` (body `{ "message": string }`).
+
+**Admin:** `GET /api/admin/config` requires `Authorization: Bearer <accessToken>` for a user with `appRole = admin`.
+
+Promote a user to admin (SQL):  
+`UPDATE "User" SET "appRole" = 'admin' WHERE email = 'you@example.com';`
+
+**curl examples**
+
+```bash
+curl -sS "http://localhost:4000/api/landing" | head -c 200
+curl -sS "http://localhost:4000/api/chat/reply" -H "Content-Type: application/json" \
+  -d '{"mode":"general","message":"test"}' 
+```
+
+Prisma: `npx prisma migrate deploy` (or `migrate dev`) after setting `DATABASE_URL`.
+
+---
+
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
 ## Project setup

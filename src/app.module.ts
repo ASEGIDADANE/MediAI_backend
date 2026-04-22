@@ -7,6 +7,11 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { LandingModule } from './landing/landing.module';
+import { DashboardConfigModule } from './dashboard-config/dashboard-config.module';
+import { ChatModule } from './chat/chat.module';
+import { AiDoctorConfigModule } from './ai-doctor-config/ai-doctor-config.module';
+import { AdminConfigModule } from './admin-config/admin-config.module';
 
 @Module({
   imports: [
@@ -20,6 +25,11 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     PrismaModule,
     AuthModule,
     OnboardingModule,
+    LandingModule,
+    DashboardConfigModule,
+    ChatModule,
+    AiDoctorConfigModule,
+    AdminConfigModule,
   ],
   controllers: [AppController],
   providers: [
