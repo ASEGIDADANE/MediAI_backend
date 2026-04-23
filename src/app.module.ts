@@ -12,6 +12,7 @@ import { DashboardConfigModule } from './dashboard-config/dashboard-config.modul
 import { ChatModule } from './chat/chat.module';
 import { AiDoctorConfigModule } from './ai-doctor-config/ai-doctor-config.module';
 import { AdminConfigModule } from './admin-config/admin-config.module';
+import { MeModule } from './me/me.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { AdminConfigModule } from './admin-config/admin-config.module';
     ChatModule,
     AiDoctorConfigModule,
     AdminConfigModule,
+    MeModule,
   ],
   controllers: [AppController],
   providers: [

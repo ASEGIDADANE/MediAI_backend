@@ -45,9 +45,36 @@ model User {
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
-  resetTokens    PasswordResetToken[]
-  profile        UserProfile?
-  supportReports SupportReport[]
+  resetTokens       PasswordResetToken[]
+  profile           UserProfile?
+  supportReports    SupportReport[]
+  accountAuditLogs  AccountAuditLog[]
+
+  chatConversations ChatConversation[]
+}
+
+/// Append-only style log for compliance; metadata must not store full PHI body text (field names / sizes only).
+enum AccountAuditAction {
+  profile_patch
+  medical_history_put
+  ai_doctor_setup_patch
+  data_export
+  account_delete_initiated
+}
+
+model AccountAuditLog {
+  id        String            @id @default(uuid())
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    AccountAuditAction
+  /// Best-effort client IP; trust X-Forwarded-For only behind a trusted reverse proxy
+  ip        String?           @db.VarChar(64)
+  userAgent String?           @db.VarChar(512)
+  /// Non-PHI: e.g. { "fields": ["age"], "byteLength": 1234 }
+  metadata  Json?
+  createdAt DateTime          @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model PasswordResetToken {
@@ -83,6 +110,13 @@ model UserProfile {
   sexAtBirth       OnboardingSexAtBirth
   preferredFeature OnboardingPreferredFeature
 
+  /// Opaque JSON matching MediAI `ProfessionalProfile` (see dashboard-content).
+  professionalProfile Json?
+  /// Opaque JSON matching MediAI `MedicalHistoryData`.
+  medicalHistory        Json?
+  /// Replaces `mediai-ai-doctor-setup-completed` in localStorage when synced.
+  aiDoctorSetupCompleted Boolean                 @default(false)
+
   onboardingCompletedAt DateTime @default(now())
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
@@ -97,4 +131,80 @@ model SupportReport {
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+}
+
+enum ChatThreadKind {
+  personal
+  general
+}
+
+enum ChatMessageRole {
+  user
+  assistant
+  system
+}
+
+/// One chat thread. Personal: `userId` set; general: `userId` may be null (anonymous).
+model ChatConversation {
+  id   String         @id @default(uuid())
+  kind ChatThreadKind
+  /// Null for authentic personal path or anonymous general; optional for logged-in general (rate limit).
+  userId            String?
+  user              User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Correlates unauthenticated general turns (not PHI).
+  clientSessionId   String?
+  /// Last activity for simple ordering.
+  updatedAt         DateTime @updatedAt
+  createdAt         DateTime @default(now())
+
+  messages ChatMessage[]
+
+  @@index([userId, kind])
+  @@index([clientSessionId, kind])
+}
+
+model ChatMessage {
+  id             String   @id @default(uuid())
+  conversationId String
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           ChatMessageRole
+  content        String   @db.Text
+  /// Optional: { citations, model, usage, ... } — not logged at `info` in full.
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+/// RAG source document (global guidelines — not per-user).
+enum DocumentAudience {
+  all
+  personal_guidance
+  general_only
+}
+
+model Document {
+  id        String           @id @default(uuid())
+  title     String
+  source    String
+  audience  DocumentAudience
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  chunks DocumentChunk[]
+
+  @@index([audience, isActive])
+}
+
+/// Chunk with pgvector column — embeddings inserted/queried via raw SQL (see `RagService`); Prisma `create` may omit `embedding` use `$executeRaw`.
+model DocumentChunk {
+  id         String   @id @default(uuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content    String   @db.Text
+  position   Int
+  embedding  Unsupported("vector(1536)")
+
+  @@index([documentId, position])
 }

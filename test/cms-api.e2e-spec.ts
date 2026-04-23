@@ -89,14 +89,17 @@ describe('MediAI CMS & chat routes (e2e)', () => {
     return request(app.getHttpServer()).get('/api/admin/config').expect(401);
   });
 
-  it('POST /api/chat/reply returns reply', async () => {
+  it('POST /api/chat/reply returns 410 Gone with migration hints', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/chat/reply')
       .send({ mode: 'personal', message: 'headache' })
-      .expect(200);
+      .expect(410);
     expect(res.body).toMatchObject({
-      reply: expect.stringContaining('headache'),
-      author: 'AI Doctor',
+      error: 'gone',
+      migration: expect.objectContaining({
+        apiDocs: 'GET /api/docs',
+        generalJson: 'POST /api/chat/general/messages',
+      }),
     });
   });
 

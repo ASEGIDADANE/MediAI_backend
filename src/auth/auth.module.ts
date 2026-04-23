@@ -8,6 +8,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { EmailModule } from '../email/email.module';
 import { resolveJwtSecret } from './jwt-config.util';
 import { RolesGuard } from './guards/roles.guard';
+import { OptionalJwtAuthGuard } from './guards/optional-jwt.guard';
 
 @Module({
   imports: [
@@ -26,7 +27,14 @@ import { RolesGuard } from './guards/roles.guard';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, RolesGuard],
-  exports: [AuthService, JwtModule, PassportModule, JwtStrategy, RolesGuard],
+  providers: [AuthService, JwtStrategy, RolesGuard, OptionalJwtAuthGuard],
+  exports: [
+    AuthService,
+    JwtModule,
+    PassportModule,
+    JwtStrategy,
+    RolesGuard,
+    OptionalJwtAuthGuard,
+  ],
 })
 export class AuthModule {}

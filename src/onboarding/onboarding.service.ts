@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -7,11 +6,14 @@ import {
 import type { UserProfile } from '../generated/prisma/client';
 import {
   OnboardingMeasurementSystem,
-  OnboardingPreferredFeature,
   OnboardingSexAtBirth,
   OnboardingUserRole,
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  fromPrismaPreferredFeature,
+  toPrismaPreferredFeature,
+} from '../profile/preferred-feature.util';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { getOnboardingConfigSnapshot } from './onboarding.constants';
 
@@ -49,7 +51,7 @@ export class OnboardingService {
     const role = this.toPrismaRole(dto.role);
     const measurementSystem = this.toPrismaMeasurement(dto.measurementSystem);
     const sexAtBirth = this.toPrismaSex(dto.sexAtBirth);
-    const preferredFeature = this.toPrismaFeature(dto.preferredFeature);
+    const preferredFeature = toPrismaPreferredFeature(dto.preferredFeature);
 
     const heightFeet =
       dto.measurementSystem === 'imperial' ? dto.heightFeet! : null;
@@ -123,7 +125,7 @@ export class OnboardingService {
       heightInches: profile.heightInches ?? '',
       heightCm: profile.heightCm ?? '',
       sexAtBirth: profile.sexAtBirth,
-      preferredFeature: this.fromPrismaFeature(profile.preferredFeature),
+      preferredFeature: fromPrismaPreferredFeature(profile.preferredFeature),
       onboardingCompletedAt: profile.onboardingCompletedAt.toISOString(),
     };
   }
@@ -152,32 +154,4 @@ export class OnboardingService {
     return OnboardingSexAtBirth.other;
   }
 
-  private toPrismaFeature(id: string): OnboardingPreferredFeature {
-    switch (id) {
-      case 'ai-doctor':
-        return OnboardingPreferredFeature.ai_doctor;
-      case 'lab-test-interpretation':
-      case 'lab-interpretation':
-        return OnboardingPreferredFeature.lab_interpretation;
-      case 'top-doctors':
-        return OnboardingPreferredFeature.top_doctors;
-      default:
-        throw new BadRequestException('Invalid preferredFeature');
-    }
-  }
-
-  private fromPrismaFeature(
-    v: OnboardingPreferredFeature,
-  ): 'ai-doctor' | 'lab-test-interpretation' | 'top-doctors' {
-    switch (v) {
-      case OnboardingPreferredFeature.ai_doctor:
-        return 'ai-doctor';
-      case OnboardingPreferredFeature.lab_interpretation:
-        return 'lab-test-interpretation';
-      case OnboardingPreferredFeature.top_doctors:
-        return 'top-doctors';
-      default:
-        return 'ai-doctor';
-    }
-  }
 }

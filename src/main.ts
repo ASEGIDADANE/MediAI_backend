@@ -28,7 +28,7 @@ async function bootstrap() {
     .setTitle('MediAI API')
     .setDescription(
       'MediAI backend — auth, onboarding profile persistence, and future modules. ' +
-        'Onboarding config mirrors the MediAI wizard; profile endpoints require JWT. ' +
+        'Onboarding config mirrors the MediAI wizard; `GET|PATCH /me/profile`, `PUT /me/medical-history`, and `PATCH /me/ai-doctor/setup` require JWT. ' +
         'All JSON routes use the global `/api` prefix.',
     )
     .setVersion('1.0')
@@ -54,6 +54,10 @@ async function bootstrap() {
     .addTag('chat', 'Chat config and mock reply')
     .addTag('ai-doctor', 'AI Doctor wizard config')
     .addTag('admin', 'Admin dashboard (JWT + admin role)')
+    .addTag(
+      'me',
+      'Current user — canonical dashboard profile, medical history JSON, AI doctor setup (JWT; replaces localStorage in Phase 3 cutover)',
+    )
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig, {
