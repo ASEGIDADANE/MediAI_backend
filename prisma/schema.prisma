@@ -131,6 +131,7 @@ model SupportReport {
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+  @@index([userId])
 }
 
 enum ChatThreadKind {

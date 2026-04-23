@@ -72,7 +72,14 @@ Swagger: `http://localhost:4000/docs` (or your `PORT`).
 
 **Throttling (chat):** Global default **120/min** (Nest `ThrottlerGuard`) on most routes; `POST /api/chat/general/messages` (+ stream) use **separate** env caps (`CHAT_ANON_GENERAL_RPM` / `CHAT_AUTH_GENERAL_RPM`) and **skip** the default throttler for those two routes. Personal routes use stricter per-route `@Throttle` values. See `docs/CHAT_PRODUCTION_READINESS_PROMPT.md` for the full bar.
 
-**Admin:** `GET /api/admin/config` requires `Authorization: Bearer <accessToken>` for a user with `appRole = admin`.
+**Admin (JWT + `appRole = admin`):**
+- **`GET /api/admin/config`** — static dashboard shell data (stat cards, mock tables, etc.; mirrors MediAI admin UI).
+- **`GET /api/admin/summary`** — **live** DB counts: `userCount`, `profileCount`, `supportReportCount`, `adminCount`, `last24hRegistrations` (Option A: merge with static config on the client when you wire the admin UI).
+- **`GET /api/admin/users`** — paginated user list (safe fields; optional `q` = email contains, max 120 chars).
+- **`GET /api/admin/support-reports`** — paginated support tickets (`messagePreview` max 500 chars; optional `userId` filter).
+
+Promote a user to admin (SQL) — re-login not strictly required: JWT strategy reloads `appRole` from the DB on each request, but a new token is fine too:  
+`UPDATE "User" SET "appRole" = 'admin' WHERE email = 'you@example.com';`
 
 **Current user (Phase 3) — source of truth for dashboard / AI Doctor localStorage cutover (JWT on all):**
 
@@ -91,9 +98,6 @@ Swagger: `http://localhost:4000/docs` (or your `PORT`).
 - **`preferredFeature`:** String IDs in JSON match the app (`ai-doctor`, `lab-test-interpretation`, `top-doctors`). Legacy `lab-interpretation` in PATCH/POST bodies maps to the same Prisma value as `lab-test-interpretation` when writing.
 - **Immutability:** `role` is not changed by `/api/me/*`; the same rules as `POST /api/onboarding/complete` apply (change role is forbidden after first set).
 - **Security / privacy:** All `/api/me/*` operations are user-scoped via JWT `sub` only (no `userId` in path/body for impersonation). **Do not log** full `profile` or `medicalHistory` at `info` in production. Encryption at rest and transport (TLS) are **infrastructure** concerns.
-
-Promote a user to admin (SQL):  
-`UPDATE "User" SET "appRole" = 'admin' WHERE email = 'you@example.com';`
 
 **curl examples**
 
@@ -146,6 +150,9 @@ $ RUN_CHAT_E2E=1 DATABASE_URL="postgresql://..." npm run test:e2e -- --testPathP
 
 # Trust e2e (`test/trust.e2e-spec.ts`): export + delete account — opt-in
 $ RUN_TRUST_E2E=1 DATABASE_URL="postgresql://..." npm run test:e2e -- --testPathPattern=trust.e2e
+
+# Admin e2e (`test/admin.e2e-spec.ts`) — opt-in
+$ RUN_ADMIN_E2E=1 DATABASE_URL="postgresql://..." npm run test:e2e -- --testPathPattern=admin.e2e
 
 # test coverage
 $ npm run test:cov
