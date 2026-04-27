@@ -53,6 +53,10 @@ async function bootstrap() {
     .addTag('dashboard', 'Dashboard home config')
     .addTag('chat', 'Chat config and mock reply')
     .addTag('ai-doctor', 'AI Doctor wizard config')
+    .addTag(
+      'top-doctors',
+      'Public top doctors directory (USD fees); consultation booking not in v1',
+    )
     .addTag('admin', 'Admin dashboard (JWT + admin role)')
     .addTag(
       'me',

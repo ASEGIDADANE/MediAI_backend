@@ -13,6 +13,7 @@ import { ChatModule } from './chat/chat.module';
 import { AiDoctorConfigModule } from './ai-doctor-config/ai-doctor-config.module';
 import { AdminConfigModule } from './admin-config/admin-config.module';
 import { MeModule } from './me/me.module';
+import { TopDoctorsModule } from './top-doctors/top-doctors.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { MeModule } from './me/me.module';
     AiDoctorConfigModule,
     AdminConfigModule,
     MeModule,
+    TopDoctorsModule,
   ],
   controllers: [AppController],
   providers: [

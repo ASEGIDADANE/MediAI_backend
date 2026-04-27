@@ -209,3 +209,45 @@ model DocumentChunk {
 
   @@index([documentId, position])
 }
+
+/// Public directory entry for MediAI "Top Doctors" (brochure-style; not linked to `User` in v1).
+/// Fees are **USD whole dollars** (same as MediAI `TopDoctor.consultationFees`).
+model TopDoctor {
+  id        String @id @default(uuid())
+  name      String
+  role      String
+  specialty String
+  subSpecialty String @map("sub_specialty")
+
+  yearsOfExperience Int @map("years_of_experience")
+  /// USD whole dollars (v1; matches frontend `consultationFees.video`)
+  videoFee  Int    @map("video_fee")
+  /// USD whole dollars
+  writtenFee Int   @map("written_fee")
+
+  heroImageUrl String @map("hero_image_url")
+
+  educationDegree String @map("education_degree")
+  educationYear   String @map("education_year")
+
+  publicationsSummary String @map("publications_summary")
+
+  /// JSON: string[] (disease labels)
+  diseases     Json
+  /// JSON: string[] (biography paragraphs)
+  biography    Json
+  /// JSON: { title: string; subtitle: string }[]
+  experience   Json
+  /// JSON: { title: string; subtitle: string }[]
+  affiliations Json
+
+  published Boolean @default(true)
+  sortOrder Int?    @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([published, specialty])
+  @@index([published, sortOrder])
+  @@map("top_doctor")
+}

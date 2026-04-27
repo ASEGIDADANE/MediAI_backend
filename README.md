@@ -64,6 +64,18 @@ Swagger: `http://localhost:4000/docs` (or your `PORT`).
 
 **Public (no token):** `GET /api/landing`, `GET /api/onboarding/config`, `GET /api/dashboard/config`, `GET /api/chat/config`, `GET /api/ai-doctor/config`, `POST /api/chat/reply` (**410 Gone** — use general/personal JSON below), `POST /api/chat/report-issue` (body `{ "message": string }`).
 
+**Top doctors (public, brochure-style directory):** Fees are **USD whole dollars** (same convention as MediAI `TopDoctor.consultationFees`). **Consultation booking / payments are not implemented** in v1 — read-only listings only.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/top-doctors/specialties` | Sorted distinct specialties (`published` rows only). |
+| `GET` | `/api/top-doctors` | Paginated list: `page`, `pageSize` (max 50), optional `specialty`, optional `q` (max 120 chars; searches name, specialty, sub-specialty, diseases JSON text). |
+| `GET` | `/api/top-doctors/:id` | Full detail (same JSON shape as MediAI `src/lib/top-doctors-content.ts` `TopDoctor`). **404** if missing or unpublished. |
+
+**Admin — top doctors (JWT + `appRole = admin`):** `POST /api/admin/top-doctors` (create), `PATCH /api/admin/top-doctors/:id` (partial update), `DELETE /api/admin/top-doctors/:id` (soft-delete: `published = false`). Same Bearer auth as other admin routes.
+
+**Seed (dev):** after migrate, `npx prisma db seed` inserts one sample doctor if the table is empty.
+
 **Chat (LLM) — JSON:** `POST /api/chat/personal/messages` (**JWT**), `POST /api/chat/general/messages` (optional JWT). **Multi-turn:** send `conversationId` / `sessionId` to continue. Response includes `messageId` (general includes assistant `messageId`). LLM/embedding errors map to **502/503/504** (no key material in body).
 
 **Chat — read (JWT, personal only):** `GET /api/chat/conversations?page&pageSize`, `GET /api/chat/conversations/:id/messages?limit&before` (cursor `before` = message id; only if conversation belongs to JWT `sub`).
