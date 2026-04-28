@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { hashDummyEmbedding } from './embedding-dummy.util';
@@ -11,13 +11,31 @@ const CACHE_TTL_MS = 60_000;
 const MAX_CACHE = 200;
 
 @Injectable()
-export class RagService {
+export class RagService implements OnModuleInit {
   private readonly log = new Logger(RagService.name);
 
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    if (!this.isEnabled()) {
+      return;
+    }
+    try {
+      const n = await this.prisma.documentChunk.count();
+      if (n === 0) {
+        this.log.warn(
+          'RAG_ENABLED=true but DocumentChunk count is 0 — run `npm run ingest:guidelines` with the same embedding mode as production LLM keys, or set RAG_ENABLED=false until data exists.',
+        );
+      }
+    } catch (e) {
+      this.log.warn(
+        `RAG startup chunk count check skipped: ${String(e).slice(0, 200)}`,
+      );
+    }
+  }
 
   isEnabled(): boolean {
     return this.config.get('RAG_ENABLED', 'false') === 'true';
