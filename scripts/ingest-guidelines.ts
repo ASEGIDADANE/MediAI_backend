@@ -145,6 +145,24 @@ async function main() {
     }
     console.log(`Ingested ${parts.length} chunk(s) for ${source} (${audience})`);
   }
+  const totalChunks = await prisma.documentChunk.count();
+  console.log(`[ingest] Total DocumentChunk rows in database: ${totalChunks}`);
+  if (totalChunks === 0) {
+    console.warn(
+      '[ingest] No chunks written — add .md/.txt under the input folder or fix path.',
+    );
+  } else {
+    const ragOn = (process.env.RAG_ENABLED || '').toLowerCase() === 'true';
+    if (ragOn) {
+      console.log(
+        '[ingest] RAG_ENABLED=true: use the same LLM/embedding key strategy for the running API as you used for this ingest.',
+      );
+    } else {
+      console.log(
+        '[ingest] Set RAG_ENABLED=true in the API .env to enable retrieval at query time (after this ingest).',
+      );
+    }
+  }
   await prisma.$disconnect();
   console.log('Done.');
 }

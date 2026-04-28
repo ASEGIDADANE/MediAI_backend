@@ -295,12 +295,20 @@ export class ChatController {
 
   @Post('report-issue')
   @HttpCode(200)
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(OptionalJwtAuthGuard, ThrottlerGuard)
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  @ApiOperation({ summary: 'Store support / issue report (public; userId null for v1)' })
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Store support / issue report',
+    description:
+      'Public. Send optional `Authorization: Bearer` to attach the report to the signed-in user (`userId`); otherwise `userId` is null.',
+  })
   @ApiBody({ type: ReportIssueDto })
   @ApiResponse({ status: 200 })
-  postReport(@Body() dto: ReportIssueDto) {
-    return this.chat.reportIssue(dto.message, undefined);
+  postReport(
+    @Body() dto: ReportIssueDto,
+    @OptionalUser() user: RequestUser | undefined,
+  ) {
+    return this.chat.reportIssue(dto.message, user?.id);
   }
 }

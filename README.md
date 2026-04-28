@@ -25,7 +25,7 @@
 
 MediAI backend: NestJS + Prisma + PostgreSQL, JWT auth, onboarding, and **public CMS-style JSON** routes aligned with the MediAI Next.js `src/app/api` handlers.
 
-**Chat (RAG + multi-turn + streaming):** see `docs/CHAT_IMPLEMENTATION_SPEC.md` and table below. **Backend finalization (gaps):** `docs/CHAT_MODULE_FINALIZATION_BACKEND.md`. **Production-hardening prompt (senior backend, same scope):** `docs/CHAT_PRODUCTION_READINESS_PROMPT.md`. MediAI frontend cross-reference is in those docs for a later cutover.
+**Chat (RAG + multi-turn + streaming):** see `docs/CHAT_IMPLEMENTATION_SPEC.md` and table below. **Backend finalization (gaps):** `docs/CHAT_MODULE_FINALIZATION_BACKEND.md`. **Production-hardening prompt (senior backend, same scope):** `docs/CHAT_PRODUCTION_READINESS_PROMPT.md`. **Next.js / MediAI app — API contract for chat (no app code in this repo):** `docs/CHAT_FRONTEND_HANDOFF.md`.
 
 ### Environment
 
@@ -33,7 +33,7 @@ MediAI backend: NestJS + Prisma + PostgreSQL, JWT auth, onboarding, and **public
 | --- | --- | --- |
 | `PORT` | `4000` | |
 | `FRONTEND_URL` | `http://localhost:3000` | CORS |
-| `DATABASE_URL` | — | PostgreSQL; **RAG** needs `pgvector` extension (see migration `..._rag_documents_pgvector`) |
+| `DATABASE_URL` | — | PostgreSQL. **RAG** requires the **`vector`** extension (`CREATE EXTENSION vector;` in migration `..._rag_documents_pgvector`). Use a server or Docker image with **pgvector** installed (repo `docker-compose` uses `pgvector/pgvector:pg16`). Plain `postgres` images may not provide the extension. |
 | `JWT_SECRET` | (required in prod) | |
 | `JWT_EXPIRES` | `7d` | |
 | `LLM_API_KEY` / `OPENAI_API_KEY` | — | `dummy` / unset = no paid API (deterministic dev text). **OpenAI:** `sk-…`, `CHAT_LLM_MODEL` (default `gpt-4o-mini`), `LLM_BASE_URL`. **Google Gemini:** keys starting with `AIza` (or `LLM_PROVIDER=gemini`) use `GEMINI_MODEL` (default `gemini-1.5-flash`) and `GEMINI_API_BASE`. |
@@ -57,13 +57,13 @@ MediAI backend: NestJS + Prisma + PostgreSQL, JWT auth, onboarding, and **public
 
 **RAG + dummy vectors:** `RagService` and `scripts/ingest-guidelines.ts` share `src/chat/embedding-dummy.util.ts` and `src/chat/llm-provider.util.ts`. With `LLM_API_KEY` unset or dummy, query and ingest use the **same** deterministic hash. With a **Gemini** key, both use `gemini-embedding-001` (or `GEMINI_EMBEDDING_MODEL`) at 1536 dimensions. **Do not** query dummy hashes against **real** vectors, or mix OpenAI-ingested chunks with Gemini query embeddings (re-ingest with one mode only).
 
-**Ingest guidelines (dev):** after migrate + `RAG_ENABLED` setup, run `npm run ingest:guidelines` (uses `LLM_API_KEY=dummy` → **hash** embeddings; for production similarity with OpenAI, ingest with a **real** key re-run). Default folder: `docs/guidelines/`.
+**Ingest guidelines (dev):** after migrate + `RAG_ENABLED` setup, run `npm run ingest:guidelines` (uses `LLM_API_KEY=dummy` → **hash** embeddings; for production similarity with OpenAI, ingest with a **real** key re-run). Default folder: `docs/guidelines/`. The script logs total `DocumentChunk` count; if the API has `RAG_ENABLED=true` but the count is **0**, startup logs a warning and retrieval returns no matches until you ingest.
 
 ### MediAI config & chat API (global prefix `api`)
 
 Swagger: `http://localhost:4000/docs` (or your `PORT`).
 
-**Public (no token):** `GET /api/landing`, `GET /api/onboarding/config`, `GET /api/dashboard/config`, `GET /api/chat/config`, `GET /api/ai-doctor/config`, `POST /api/chat/reply` (**410 Gone** — use general/personal JSON below), `POST /api/chat/report-issue` (body `{ "message": string }`).
+**Public (no token):** `GET /api/landing`, `GET /api/onboarding/config`, `GET /api/dashboard/config`, `GET /api/chat/config`, `GET /api/ai-doctor/config`, `POST /api/chat/reply` (**410 Gone** — use general/personal JSON below), `POST /api/chat/report-issue` (body `{ "message": string }`; **optional** Bearer to attach `userId`).
 
 **Top doctors (public, brochure-style directory):** Fees are **USD whole dollars** (same convention as MediAI `TopDoctor.consultationFees`). **Consultation booking / payments are not implemented** in v1 — read-only listings only.
 
@@ -176,16 +176,16 @@ $ npm run test
 $ npm run test:e2e
 
 # Phase 3 user profile e2e (`test/me.e2e-spec.ts`): requires migrated DB and opt-in
-$ RUN_ME_E2E=1 DATABASE_URL="postgresql://..." npm run test:e2e -- --testPathPattern=me.e2e
+$ RUN_ME_E2E=1 DATABASE_URL="postgresql://..." npm run test:e2e -- --testPathPatterns=me.e2e
 
-# Chat e2e (`test/chat.e2e-spec.ts`): multi-turn, read APIs, general PII check — opt-in
-$ RUN_CHAT_E2E=1 DATABASE_URL="postgresql://..." npm run test:e2e -- --testPathPattern=chat.e2e
+# Chat e2e (`test/chat.e2e-spec.ts`): register → onboard → personal multi-turn → list/get messages → 404 for other user’s thread → general without PII in body — requires DB + opt-in
+$ cd MediAI_backend && RUN_CHAT_E2E=1 DATABASE_URL="postgresql://USER:PASS@localhost:5432/DB" npm run test:e2e -- --testPathPatterns=chat.e2e
 
 # Trust e2e (`test/trust.e2e-spec.ts`): export + delete account — opt-in
-$ RUN_TRUST_E2E=1 DATABASE_URL="postgresql://..." npm run test:e2e -- --testPathPattern=trust.e2e
+$ RUN_TRUST_E2E=1 DATABASE_URL="postgresql://..." npm run test:e2e -- --testPathPatterns=trust.e2e
 
 # Admin e2e (`test/admin.e2e-spec.ts`) — opt-in
-$ RUN_ADMIN_E2E=1 DATABASE_URL="postgresql://..." npm run test:e2e -- --testPathPattern=admin.e2e
+$ RUN_ADMIN_E2E=1 DATABASE_URL="postgresql://..." npm run test:e2e -- --testPathPatterns=admin.e2e
 
 # test coverage
 $ npm run test:cov

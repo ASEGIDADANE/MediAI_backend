@@ -56,7 +56,10 @@ async function bootstrap() {
       'Static help / education (symptom guide, glossary, knowledge base)',
     )
     .addTag('dashboard', 'Dashboard home config')
-    .addTag('chat', 'Chat config and mock reply')
+    .addTag(
+      'chat',
+      'AI chat: OpenAI- or Google Gemini–compatible LLM (`LLM_API_KEY`); personal (JWT) vs general; multi-turn; optional RAG when `RAG_ENABLED=true` (pgvector + `DocumentChunk`). JSON: `POST /api/chat/personal|general/messages`. Streaming (SSE): `.../stream`. Legacy `POST /api/chat/reply` returns **410 Gone**.',
+    )
     .addTag('ai-doctor', 'AI Doctor wizard config')
     .addTag(
       'top-doctors',
