@@ -16,6 +16,7 @@ import { MeModule } from './me/me.module';
 import { TopDoctorsModule } from './top-doctors/top-doctors.module';
 import { BlogModule } from './blog/blog.module';
 import { EducationModule } from './education/education.module';
+import { HealthFacilitiesModule } from './health-facilities/health-facilities.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { EducationModule } from './education/education.module';
     TopDoctorsModule,
     BlogModule,
     EducationModule,
+    HealthFacilitiesModule,
   ],
   controllers: [AppController],
   providers: [
