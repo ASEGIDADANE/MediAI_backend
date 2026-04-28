@@ -24,12 +24,19 @@ export class SexOptionDto {
 }
 
 export class FeatureOptionDto {
-  @ApiProperty({ enum: ['ai-doctor', 'lab-interpretation', 'top-doctors'] })
+  @ApiProperty({ enum: ['ai-doctor', 'lab-test-interpretation', 'top-doctors'] })
   id: string;
   @ApiProperty()
   title: string;
   @ApiProperty()
   description: string;
+}
+
+export class ProfessionalTitleOptionDto {
+  @ApiProperty()
+  id: string;
+  @ApiProperty()
+  label: string;
 }
 
 export class OnboardingConfigResponseDto {
@@ -53,4 +60,31 @@ export class OnboardingConfigResponseDto {
 
   @ApiProperty({ type: [String] })
   generalInformationSteps: string[];
+
+  @ApiProperty({ type: [ProfessionalTitleOptionDto] })
+  professionalTitleOptions: ProfessionalTitleOptionDto[];
+
+  @ApiProperty({ type: [String] })
+  professionalSpecialtyOptions: string[];
+
+  @ApiProperty({ type: [String] })
+  professionalCompletionItems: string[];
+
+  @ApiProperty({ type: [String] })
+  smokingIntensityOptions: string[];
+
+  @ApiProperty({ type: [String] })
+  alcoholIntakeOptions: string[];
+
+  @ApiProperty({ type: [String] })
+  physicalActivityOptions: string[];
+
+  @ApiProperty({ type: [String] })
+  dietaryHabitOptions: string[];
+
+  @ApiProperty({ type: [String] })
+  sleepPatternOptions: string[];
+
+  @ApiProperty({ type: [String] })
+  stressLevelOptions: string[];
 }

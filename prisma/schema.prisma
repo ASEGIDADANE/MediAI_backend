@@ -9,6 +9,11 @@ datasource db {
   provider = "postgresql"
 }
 
+enum UserAppRole {
+  user
+  admin
+}
+
 enum OnboardingUserRole {
   personal
   professional
@@ -32,15 +37,44 @@ enum OnboardingPreferredFeature {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
+  id           String      @id @default(uuid())
+  email        String      @unique
   passwordHash String?
-  googleId     String?  @unique
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  googleId     String?     @unique
+  appRole      UserAppRole @default(user)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
-  resetTokens PasswordResetToken[]
-  profile     UserProfile?
+  resetTokens       PasswordResetToken[]
+  profile           UserProfile?
+  supportReports    SupportReport[]
+  accountAuditLogs  AccountAuditLog[]
+
+  chatConversations ChatConversation[]
+}
+
+/// Append-only style log for compliance; metadata must not store full PHI body text (field names / sizes only).
+enum AccountAuditAction {
+  profile_patch
+  medical_history_put
+  ai_doctor_setup_patch
+  data_export
+  account_delete_initiated
+}
+
+model AccountAuditLog {
+  id        String            @id @default(uuid())
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    AccountAuditAction
+  /// Best-effort client IP; trust X-Forwarded-For only behind a trusted reverse proxy
+  ip        String?           @db.VarChar(64)
+  userAgent String?           @db.VarChar(512)
+  /// Non-PHI: e.g. { "fields": ["age"], "byteLength": 1234 }
+  metadata  Json?
+  createdAt DateTime          @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model PasswordResetToken {
@@ -76,7 +110,204 @@ model UserProfile {
   sexAtBirth       OnboardingSexAtBirth
   preferredFeature OnboardingPreferredFeature
 
+  /// Opaque JSON matching MediAI `ProfessionalProfile` (see dashboard-content).
+  professionalProfile Json?
+  /// Opaque JSON matching MediAI `MedicalHistoryData`.
+  medicalHistory        Json?
+  /// Replaces `mediai-ai-doctor-setup-completed` in localStorage when synced.
+  aiDoctorSetupCompleted Boolean                 @default(false)
+
   onboardingCompletedAt DateTime @default(now())
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+}
+
+/// Optional persistence for POST /api/chat/report-issue.
+model SupportReport {
+  id        String   @id @default(uuid())
+  message   String
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+}
+
+enum ChatThreadKind {
+  personal
+  general
+}
+
+enum ChatMessageRole {
+  user
+  assistant
+  system
+}
+
+/// One chat thread. Personal: `userId` set; general: `userId` may be null (anonymous).
+model ChatConversation {
+  id   String         @id @default(uuid())
+  kind ChatThreadKind
+  /// Null for authentic personal path or anonymous general; optional for logged-in general (rate limit).
+  userId            String?
+  user              User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Correlates unauthenticated general turns (not PHI).
+  clientSessionId   String?
+  /// Last activity for simple ordering.
+  updatedAt         DateTime @updatedAt
+  createdAt         DateTime @default(now())
+
+  messages ChatMessage[]
+
+  @@index([userId, kind])
+  @@index([clientSessionId, kind])
+}
+
+model ChatMessage {
+  id             String   @id @default(uuid())
+  conversationId String
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           ChatMessageRole
+  content        String   @db.Text
+  /// Optional: { citations, model, usage, ... } — not logged at `info` in full.
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+/// RAG source document (global guidelines — not per-user).
+enum DocumentAudience {
+  all
+  personal_guidance
+  general_only
+}
+
+model Document {
+  id        String           @id @default(uuid())
+  title     String
+  source    String
+  audience  DocumentAudience
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  chunks DocumentChunk[]
+
+  @@index([audience, isActive])
+}
+
+/// Chunk with pgvector column — embeddings inserted/queried via raw SQL (see `RagService`); Prisma `create` may omit `embedding` use `$executeRaw`.
+model DocumentChunk {
+  id         String   @id @default(uuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content    String   @db.Text
+  position   Int
+  embedding  Unsupported("vector(1536)")
+
+  @@index([documentId, position])
+}
+
+/// Public directory entry for MediAI "Top Doctors" (brochure-style; not linked to `User` in v1).
+/// Fees are **USD whole dollars** (same as MediAI `TopDoctor.consultationFees`).
+model TopDoctor {
+  id        String @id @default(uuid())
+  name      String
+  role      String
+  specialty String
+  subSpecialty String @map("sub_specialty")
+
+  yearsOfExperience Int @map("years_of_experience")
+  /// USD whole dollars (v1; matches frontend `consultationFees.video`)
+  videoFee  Int    @map("video_fee")
+  /// USD whole dollars
+  writtenFee Int   @map("written_fee")
+
+  heroImageUrl String @map("hero_image_url")
+
+  educationDegree String @map("education_degree")
+  educationYear   String @map("education_year")
+
+  publicationsSummary String @map("publications_summary")
+
+  /// JSON: string[] (disease labels)
+  diseases     Json
+  /// JSON: string[] (biography paragraphs)
+  biography    Json
+  /// JSON: { title: string; subtitle: string }[]
+  experience   Json
+  /// JSON: { title: string; subtitle: string }[]
+  affiliations Json
+
+  published Boolean @default(true)
+  sortOrder Int?    @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([published, specialty])
+  @@index([published, sortOrder])
+  @@map("top_doctor")
+}
+
+/// Marketing blog post (MediAI `BlogArticle` from `src/lib/blog-content.ts`).
+/// `date` in API = `dateDisplay` if set, else formatted `publishedAt` (en-US).
+model BlogArticle {
+  id         String   @id @default(uuid())
+  title      String
+  category   String
+  author     String
+  readTime   String   @map("read_time")
+  imageSrc   String   @map("image_src")
+  intro      String   @db.Text
+  /// JSON: { title: string; body: string }[]
+  sections   Json
+  published  Boolean  @default(true)
+  publishedAt DateTime @map("published_at")
+  /// Exact display string e.g. "Jan 07, 2025" (optional; recommended for CMS parity)
+  dateDisplay String?  @map("date_display")
+  sortOrder  Int?     @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([published, publishedAt(sort: Desc)])
+  @@index([published, category])
+  @@map("blog_article")
+}
+
+/// Singleton (id = `default`) — homepage curation matching MediAI `featuredBlogArticleId` + `*ArticleIds` lists.
+model BlogHomeConfig {
+  id     String @id @default("default")
+  /// UUID of featured article
+  featuredArticleId String? @map("featured_article_id")
+  /// JSON string[] of UUIDs
+  popularArticleIds            Json @map("popular_article_ids")
+  aiHealthcareArticleIds      Json @map("ai_healthcare_article_ids")
+  secondOpinionArticleIds       Json @map("second_opinion_article_ids")
+  companyNewsArticleIds         Json @map("company_news_article_ids")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("blog_home_config")
+}
+
+/// Static help / education page (MediAI `ResourcePageTemplate` — symptom guide, glossary, knowledge base).
+model EducationResource {
+  id          String   @id @default(uuid())
+  /// `symptom-guide` | `glossary` | `knowledge-base` (enforced in app; unique)
+  slug        String   @unique
+  title       String
+  description String   @db.Text
+  /// JSON: string[] (bullet cards)
+  bullets     Json
+  /// Same as `slug` for `iconKey` in API (optional in DB)
+  iconKey     String?  @map("icon_key")
+  published   Boolean  @default(true)
+  sortOrder   Int?     @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([published, sortOrder])
+  @@map("education_resource")
 }

@@ -11,6 +11,7 @@ import { createHash, randomBytes } from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import type { UserAppRole } from '../generated/prisma/client';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -133,12 +134,16 @@ export class AuthService {
       }
     }
 
-    const accessToken = await this.signAccessToken(user.id, user.email);
+    const accessToken = await this.signAccessToken(user.id, user.email, user.appRole);
     return { accessToken, user: { id: user.id, email: user.email } };
   }
 
-  private async signAccessToken(userId: string, email: string): Promise<string> {
-    return this.jwt.signAsync({ sub: userId, email });
+  private async signAccessToken(
+    userId: string,
+    email: string,
+    appRole: UserAppRole,
+  ): Promise<string> {
+    return this.jwt.signAsync({ sub: userId, email, appRole });
   }
 
   async register(dto: RegisterDto): Promise<{ accessToken: string; user: AuthUserView }> {
@@ -153,7 +158,7 @@ export class AuthService {
       data: { email, passwordHash },
     });
 
-    const accessToken = await this.signAccessToken(user.id, user.email);
+    const accessToken = await this.signAccessToken(user.id, user.email, user.appRole);
     return { accessToken, user: { id: user.id, email: user.email } };
   }
 
@@ -169,7 +174,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    const accessToken = await this.signAccessToken(user.id, user.email);
+    const accessToken = await this.signAccessToken(user.id, user.email, user.appRole);
     return { accessToken, user: { id: user.id, email: user.email } };
   }
 
