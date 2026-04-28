@@ -1,11 +1,25 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { Prisma, PrismaClient } from '../src/generated/prisma/client';
 
 const prisma = new PrismaClient();
 
-export async function main() {
+type SeedArticle = {
+  id: string;
+  title: string;
+  category: string;
+  author: string;
+  date: string;
+  readTime: string;
+  imageSrc: string;
+  intro: string;
+  sections: { title: string; body: string }[];
+};
+
+async function seedTopDoctor() {
   const count = await prisma.topDoctor.count();
   if (count > 0) {
-    console.log('Seeded top doctors already present; skip.');
+    console.log('Top doctors already present; skip.');
     return;
   }
 
@@ -55,6 +69,142 @@ export async function main() {
     },
   });
   console.log('Seeded 1 top doctor (Dr. Ashenafi / Oncology).');
+}
+
+async function seedBlog() {
+  if ((await prisma.blogArticle.count()) > 0) {
+    console.log('Blog articles already present; skip.');
+    return;
+  }
+
+  const p = path.join(__dirname, 'data', 'blog-seed.json');
+  const raw = JSON.parse(fs.readFileSync(p, 'utf8')) as SeedArticle[];
+  const idMap = new Map<string, string>();
+
+  for (const a of raw) {
+    const publishedAt = new Date(Date.parse(a.date));
+    if (Number.isNaN(publishedAt.getTime())) {
+      throw new Error(`Bad date: ${a.date}`);
+    }
+    const created = await prisma.blogArticle.create({
+      data: {
+        title: a.title,
+        category: a.category,
+        author: a.author,
+        readTime: a.readTime,
+        imageSrc: a.imageSrc,
+        intro: a.intro,
+        sections: a.sections as Prisma.JsonValue,
+        published: true,
+        publishedAt,
+        dateDisplay: a.date,
+        sortOrder: parseInt(a.id, 10),
+      },
+    });
+    idMap.set(a.id, created.id);
+  }
+
+  const g = (legacy: string) => {
+    const u = idMap.get(legacy);
+    if (!u) {
+      throw new Error(`Missing legacy id ${legacy}`);
+    }
+    return u;
+  };
+
+  await prisma.blogHomeConfig.upsert({
+    where: { id: 'default' },
+    create: {
+      id: 'default',
+      featuredArticleId: g('1'),
+      popularArticleIds: [g('2'), g('3')],
+      aiHealthcareArticleIds: [g('2'), g('3'), g('4')],
+      secondOpinionArticleIds: [g('5'), g('6'), g('7')],
+      companyNewsArticleIds: [g('8'), g('9'), g('10')],
+    },
+    update: {
+      featuredArticleId: g('1'),
+      popularArticleIds: [g('2'), g('3')],
+      aiHealthcareArticleIds: [g('2'), g('3'), g('4')],
+      secondOpinionArticleIds: [g('5'), g('6'), g('7')],
+      companyNewsArticleIds: [g('8'), g('9'), g('10')],
+    },
+  });
+
+  console.log(`Seeded ${raw.length} blog articles + home config.`);
+}
+
+async function seedEducation() {
+  if ((await prisma.educationResource.count()) > 0) {
+    console.log('Education resources already present; skip.');
+    return;
+  }
+
+  const pages: {
+    slug: 'symptom-guide' | 'glossary' | 'knowledge-base';
+    sortOrder: number;
+    title: string;
+    description: string;
+    bullets: string[];
+  }[] = [
+    {
+      slug: 'symptom-guide',
+      sortOrder: 1,
+      title: 'Symptom Guide',
+      description:
+        'Use the MediAI symptom guide to understand common signs, prepare smarter questions, and know when to seek urgent care.',
+      bullets: [
+        'Review common symptom patterns in clear, non-technical language.',
+        'Prepare for care visits with focused questions and useful context.',
+        'Understand which symptoms may need urgent clinical attention.',
+      ],
+    },
+    {
+      slug: 'glossary',
+      sortOrder: 2,
+      title: 'Glossary',
+      description:
+        'Look up common healthcare, lab, and AI terms used across MediAI so the product stays easy to understand.',
+      bullets: [
+        'Learn the meaning of common lab, symptom, and treatment terms.',
+        'Understand AI and medical language that appears in explanations and summaries.',
+        'Build confidence before appointments, result reviews, and follow-up questions.',
+      ],
+    },
+    {
+      slug: 'knowledge-base',
+      sortOrder: 3,
+      title: 'Knowledge Base',
+      description:
+        'Browse foundational MediAI help content, feature explanations, and product guidance in one place.',
+      bullets: [
+        'Understand how each MediAI workflow is designed to support patients and professionals.',
+        'Find setup guidance for onboarding, AI Doctor, lab tests, and second opinions.',
+        'Get quick answers about features, privacy expectations, and recommended usage.',
+      ],
+    },
+  ];
+
+  for (const p of pages) {
+    await prisma.educationResource.create({
+      data: {
+        slug: p.slug,
+        title: p.title,
+        description: p.description,
+        bullets: p.bullets as Prisma.JsonValue,
+        iconKey: p.slug,
+        published: true,
+        sortOrder: p.sortOrder,
+      },
+    });
+  }
+  console.log('Seeded 3 education resources (symptom guide, glossary, knowledge base).');
+}
+
+export async function main() {
+  await seedTopDoctor();
+  await seedBlog();
+  await seedEducation();
 }
 
 main()

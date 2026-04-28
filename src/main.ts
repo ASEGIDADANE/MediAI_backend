@@ -50,6 +50,11 @@ async function bootstrap() {
     )
     .addTag('health', 'Service health')
     .addTag('landing', 'Marketing / landing JSON')
+    .addTag('blog', 'Public blog (MediAI BlogArticle shape); no comments in v1')
+    .addTag(
+      'education',
+      'Static help / education (symptom guide, glossary, knowledge base)',
+    )
     .addTag('dashboard', 'Dashboard home config')
     .addTag('chat', 'Chat config and mock reply')
     .addTag('ai-doctor', 'AI Doctor wizard config')

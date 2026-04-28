@@ -74,7 +74,27 @@ Swagger: `http://localhost:4000/docs` (or your `PORT`).
 
 **Admin — top doctors (JWT + `appRole = admin`):** `POST /api/admin/top-doctors` (create), `PATCH /api/admin/top-doctors/:id` (partial update), `DELETE /api/admin/top-doctors/:id` (soft-delete: `published = false`). Same Bearer auth as other admin routes.
 
-**Seed (dev):** after migrate, `npx prisma db seed` inserts one sample doctor if the table is empty.
+**Seed (dev):** after migrate, `npx prisma db seed` inserts one sample doctor (if empty), **blog** articles from `prisma/data/blog-seed.json` (exported from MediAI `blog-content`) plus `blog_home_config`, and **3 education resources** (symptom guide, glossary, knowledge base) if empty.
+
+**Blog (public, MediAI `BlogArticle` shape):** `date` in JSON is **`dateDisplay` when set**, else derived from **`publishedAt`** (UTC) as `Jan 07, 2025` style. **Comments / likes are not in v1.**
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/blog/home` | Curated UUIDs: `featuredArticleId`, `popularArticleIds`, `aiHealthcareArticleIds`, `secondOpinionArticleIds`, `companyNewsArticleIds` (replaces hardcoded lists in `blog-content.ts`). |
+| `GET` | `/api/blog/categories` | Distinct categories, published only. |
+| `GET` | `/api/blog/articles` | Paginated: `page`, `pageSize` (max 50), optional `category` (case-insensitive equality), optional `q` (title + intro, max 120 chars). |
+| `GET` | `/api/blog/articles/:id` | Full article. **404** if missing or unpublished. |
+
+**Admin — blog (JWT + admin):** `POST /api/admin/blog/articles`, `PATCH /api/admin/blog/articles/:id`, `DELETE` (soft), `PUT /api/admin/blog/home` (replace curation).
+
+**Education / help (public, MediAI `ResourcePageTemplate` props):** `slug` is one of `symptom-guide`, `glossary`, `knowledge-base`. API returns `title`, `description`, `bullets[]`, optional `iconKey` (defaults to `slug` in JSON).
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/education/resources` | All **published** rows, ordered by `sortOrder` then `slug`. |
+| `GET` | `/api/education/resources/:slug` | One resource. **404** for unknown slug or unpublished. |
+
+**Admin — education (JWT + admin):** `GET /api/admin/education/resources` (all, incl. unpublished), `POST /api/admin/education/resources` (**409** on duplicate `slug`), `PATCH /api/admin/education/resources/:id`, `DELETE` (soft).
 
 **Chat (LLM) — JSON:** `POST /api/chat/personal/messages` (**JWT**), `POST /api/chat/general/messages` (optional JWT). **Multi-turn:** send `conversationId` / `sessionId` to continue. Response includes `messageId` (general includes assistant `messageId`). LLM/embedding errors map to **502/503/504** (no key material in body).
 

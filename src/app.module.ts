@@ -14,6 +14,8 @@ import { AiDoctorConfigModule } from './ai-doctor-config/ai-doctor-config.module
 import { AdminConfigModule } from './admin-config/admin-config.module';
 import { MeModule } from './me/me.module';
 import { TopDoctorsModule } from './top-doctors/top-doctors.module';
+import { BlogModule } from './blog/blog.module';
+import { EducationModule } from './education/education.module';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { TopDoctorsModule } from './top-doctors/top-doctors.module';
     AdminConfigModule,
     MeModule,
     TopDoctorsModule,
+    BlogModule,
+    EducationModule,
   ],
   controllers: [AppController],
   providers: [

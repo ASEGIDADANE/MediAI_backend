@@ -251,3 +251,63 @@ model TopDoctor {
   @@index([published, sortOrder])
   @@map("top_doctor")
 }
+
+/// Marketing blog post (MediAI `BlogArticle` from `src/lib/blog-content.ts`).
+/// `date` in API = `dateDisplay` if set, else formatted `publishedAt` (en-US).
+model BlogArticle {
+  id         String   @id @default(uuid())
+  title      String
+  category   String
+  author     String
+  readTime   String   @map("read_time")
+  imageSrc   String   @map("image_src")
+  intro      String   @db.Text
+  /// JSON: { title: string; body: string }[]
+  sections   Json
+  published  Boolean  @default(true)
+  publishedAt DateTime @map("published_at")
+  /// Exact display string e.g. "Jan 07, 2025" (optional; recommended for CMS parity)
+  dateDisplay String?  @map("date_display")
+  sortOrder  Int?     @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([published, publishedAt(sort: Desc)])
+  @@index([published, category])
+  @@map("blog_article")
+}
+
+/// Singleton (id = `default`) — homepage curation matching MediAI `featuredBlogArticleId` + `*ArticleIds` lists.
+model BlogHomeConfig {
+  id     String @id @default("default")
+  /// UUID of featured article
+  featuredArticleId String? @map("featured_article_id")
+  /// JSON string[] of UUIDs
+  popularArticleIds            Json @map("popular_article_ids")
+  aiHealthcareArticleIds      Json @map("ai_healthcare_article_ids")
+  secondOpinionArticleIds       Json @map("second_opinion_article_ids")
+  companyNewsArticleIds         Json @map("company_news_article_ids")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("blog_home_config")
+}
+
+/// Static help / education page (MediAI `ResourcePageTemplate` — symptom guide, glossary, knowledge base).
+model EducationResource {
+  id          String   @id @default(uuid())
+  /// `symptom-guide` | `glossary` | `knowledge-base` (enforced in app; unique)
+  slug        String   @unique
+  title       String
+  description String   @db.Text
+  /// JSON: string[] (bullet cards)
+  bullets     Json
+  /// Same as `slug` for `iconKey` in API (optional in DB)
+  iconKey     String?  @map("icon_key")
+  published   Boolean  @default(true)
+  sortOrder   Int?     @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([published, sortOrder])
+  @@map("education_resource")
+}
