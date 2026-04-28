@@ -311,3 +311,29 @@ model EducationResource {
   @@index([published, sortOrder])
   @@map("education_resource")
 }
+
+/// Public directory for dashboard “Healthcare Facility Locator” (MediAI `healthcareFacilities` in `dashboard-content.ts`).
+enum HealthcareFacilityType {
+  hospital
+  pharmacy
+  clinic
+}
+
+model HealthcareFacility {
+  id        String                 @id
+  name      String
+  type      HealthcareFacilityType
+  address   String
+  phone     String
+  rating    Float
+  verified  Boolean                @default(false)
+  latitude  Float
+  longitude Float
+  openNow   Boolean                @default(false) @map("open_now")
+  published Boolean                @default(true)
+  createdAt DateTime               @default(now()) @map("created_at")
+  updatedAt DateTime               @updatedAt @map("updated_at")
+
+  @@index([published, type])
+  @@map("healthcare_facility")
+}

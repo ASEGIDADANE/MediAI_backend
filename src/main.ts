@@ -65,6 +65,10 @@ async function bootstrap() {
       'top-doctors',
       'Public top doctors directory (USD fees); consultation booking not in v1',
     )
+    .addTag(
+      'health-facilities',
+      'Public healthcare facilities (hospital, pharmacy, clinic) for the facility locator; read-only',
+    )
     .addTag('admin', 'Admin dashboard (JWT + admin role)')
     .addTag(
       'me',

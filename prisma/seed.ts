@@ -1,6 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { Prisma, PrismaClient } from '../src/generated/prisma/client';
+import {
+  Prisma,
+  PrismaClient,
+  type HealthcareFacilityType,
+} from '../src/generated/prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -201,10 +205,55 @@ async function seedEducation() {
   console.log('Seeded 3 education resources (symptom guide, glossary, knowledge base).');
 }
 
+type HealthFacilitySeedRow = {
+  id: string;
+  name: string;
+  type: string;
+  address: string;
+  phone: string;
+  rating: number;
+  verified: boolean;
+  latitude: number;
+  longitude: number;
+  openNow: boolean;
+};
+
+async function seedHealthFacilities() {
+  if ((await prisma.healthcareFacility.count()) > 0) {
+    console.log('Healthcare facilities already present; skip.');
+    return;
+  }
+
+  const p = path.join(__dirname, 'data', 'health-facilities-seed.json');
+  const raw = JSON.parse(
+    fs.readFileSync(p, 'utf-8'),
+  ) as HealthFacilitySeedRow[];
+
+  for (const r of raw) {
+    await prisma.healthcareFacility.create({
+      data: {
+        id: r.id,
+        name: r.name,
+        type: r.type as HealthcareFacilityType,
+        address: r.address,
+        phone: r.phone,
+        rating: r.rating,
+        verified: r.verified,
+        latitude: r.latitude,
+        longitude: r.longitude,
+        openNow: r.openNow,
+        published: true,
+      },
+    });
+  }
+  console.log(`Seeded ${raw.length} healthcare facilities (facility locator).`);
+}
+
 export async function main() {
   await seedTopDoctor();
   await seedBlog();
   await seedEducation();
+  await seedHealthFacilities();
 }
 
 main()

@@ -73,9 +73,18 @@ Swagger: `http://localhost:4000/docs` (or your `PORT`).
 | `GET` | `/api/top-doctors` | Paginated list: `page`, `pageSize` (max 50), optional `specialty`, optional `q` (max 120 chars; searches name, specialty, sub-specialty, diseases JSON text). |
 | `GET` | `/api/top-doctors/:id` | Full detail (same JSON shape as MediAI `src/lib/top-doctors-content.ts` `TopDoctor`). **404** if missing or unpublished. |
 
+**Healthcare facilities (public, facility locator):** Same shape as MediAI `healthcareFacilities` in `dashboard-content.ts` (hospital, pharmacy, clinic; stable ids `fac-001`, …). Read-only; no admin API in v1.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/health-facilities` | Paginated list: `page`, `pageSize` (max 50), optional `type` (`hospital` \| `pharmacy` \| `clinic`), optional `q` (max 120 chars; name + address). |
+| `GET` | `/api/health-facilities/:id` | One facility by id (e.g. `fac-001`). **400** if id format is invalid. **404** if missing or unpublished. |
+
+**Integration details (query params, examples, errors, ops):** `docs/HEALTH_FACILITIES_API_V1.md`.
+
 **Admin — top doctors (JWT + `appRole = admin`):** `POST /api/admin/top-doctors` (create), `PATCH /api/admin/top-doctors/:id` (partial update), `DELETE /api/admin/top-doctors/:id` (soft-delete: `published = false`). Same Bearer auth as other admin routes.
 
-**Seed (dev):** after migrate, `npx prisma db seed` inserts one sample doctor (if empty), **blog** articles from `prisma/data/blog-seed.json` (exported from MediAI `blog-content`) plus `blog_home_config`, and **3 education resources** (symptom guide, glossary, knowledge base) if empty.
+**Seed (dev):** after migrate, `npx prisma db seed` inserts one sample doctor (if empty), **blog** articles from `prisma/data/blog-seed.json` (exported from MediAI `blog-content`) plus `blog_home_config`, **3 education resources** (symptom guide, glossary, knowledge base) if empty, and **healthcare facilities** from `prisma/data/health-facilities-seed.json` (if the table is empty) for the facility locator.
 
 **Blog (public, MediAI `BlogArticle` shape):** `date` in JSON is **`dateDisplay` when set**, else derived from **`publishedAt`** (UTC) as `Jan 07, 2025` style. **Comments / likes are not in v1.**
 
@@ -186,6 +195,9 @@ $ RUN_TRUST_E2E=1 DATABASE_URL="postgresql://..." npm run test:e2e -- --testPath
 
 # Admin e2e (`test/admin.e2e-spec.ts`) — opt-in
 $ RUN_ADMIN_E2E=1 DATABASE_URL="postgresql://..." npm run test:e2e -- --testPathPatterns=admin.e2e
+
+# Health facilities e2e (`test/health-facilities.e2e-spec.ts`): id validation runs by default; list/detail require migrated DB + opt-in
+$ RUN_HEALTH_FACILITIES_E2E=1 DATABASE_URL="postgresql://..." npm run test:e2e -- --testPathPatterns=health-facilities.e2e
 
 # test coverage
 $ npm run test:cov
