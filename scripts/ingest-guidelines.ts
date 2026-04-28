@@ -2,12 +2,20 @@
  * Ingests Markdown guidelines into `Document` / `DocumentChunk` with pgvector embeddings.
  * Usage: `npx ts-node scripts/ingest-guidelines.ts [path/to/folder]`
  * Requires: `DATABASE_URL`, migration with pgvector, `LLM_API_KEY` (or dummy hash embeddings).
+ * With a Google `AIza` key (or `LLM_PROVIDER=gemini`), uses Gemini `embedContent` (same as RAG at runtime).
  */
 import { createHash, randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { config as loadEnv } from 'dotenv';
 import { DocumentAudience, PrismaClient } from '../src/generated/prisma/client';
 import { hashDummyEmbedding } from '../src/chat/embedding-dummy.util';
+import {
+  geminiEmbedContentFromEnv,
+  useGoogleGeminiLlmFromEnv,
+} from '../src/chat/llm-provider.util';
+
+loadEnv({ path: path.join(__dirname, '../.env') });
 
 const CHUNK = 1_200;
 const OVERLAP = 150;
@@ -26,6 +34,9 @@ function isDummyKey(): boolean {
 async function embed(text: string): Promise<number[]> {
   if (isDummyKey()) {
     return hashDummyEmbedding(text);
+  }
+  if (useGoogleGeminiLlmFromEnv(process.env)) {
+    return geminiEmbedContentFromEnv(process.env, text, 'RETRIEVAL_DOCUMENT');
   }
   const key = (process.env.EMBEDDING_API_KEY || process.env.LLM_API_KEY || process.env.OPENAI_API_KEY)!.trim();
   const base = (process.env.LLM_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');

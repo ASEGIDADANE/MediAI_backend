@@ -1,4 +1,4 @@
-/** Must match `vector(1536)` in Prisma and OpenAI `text-embedding-3-small` default. */
+/** Must match `vector(1536)` in Prisma, OpenAI `text-embedding-3-small`, and Gemini `embedContent` `outputDimensionality`. */
 export const DUMMY_EMBEDDING_DIM = 1536 as const;
 
 /**

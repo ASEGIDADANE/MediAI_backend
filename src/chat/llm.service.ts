@@ -1,6 +1,12 @@
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
+import {
+  geminiChatModelId,
+  geminiGenerativeBase,
+  getLlmApiKey,
+  useGoogleGeminiLlm,
+} from './llm-provider.util';
 
 export type LlmResult = {
   text: string;
@@ -22,9 +28,7 @@ export class LlmService {
   constructor(private readonly config: ConfigService) {}
 
   isDummyKey(): boolean {
-    const k = (this.config.get('LLM_API_KEY') || this.config.get('OPENAI_API_KEY') || '')
-      .toString()
-      .trim();
+    const k = getLlmApiKey(this.config);
     if (!k) {
       return true;
     }
@@ -54,6 +58,9 @@ export class LlmService {
     if (this.isDummyKey()) {
       return this.dummyResult(messages, messages.length > 2);
     }
+    if (useGoogleGeminiLlm(this.config)) {
+      return this.geminiGenerateContent(messages);
+    }
     return this.openAiChatCompletionsJson(messages);
   }
 
@@ -68,6 +75,10 @@ export class LlmService {
           yield part;
         }
       }
+      return;
+    }
+    if (useGoogleGeminiLlm(this.config)) {
+      yield* this.geminiStreamChunks(messages);
       return;
     }
     yield* this.openAiChatStreamChunks(messages);
@@ -95,6 +106,156 @@ export class LlmService {
       usage: { promptTokens: 0, completionTokens: 0 },
       model: 'dummy',
     };
+  }
+
+  private buildGeminiRequestBody(messages: LlmMessage[]): {
+    systemInstruction?: { parts: { text: string }[] };
+    contents: { role: string; parts: { text: string }[] }[];
+    generationConfig: { temperature: number; maxOutputTokens: number };
+  } {
+    const systemBits: string[] = [];
+    const contents: { role: string; parts: { text: string }[] }[] = [];
+    for (const m of messages) {
+      if (m.role === 'system') {
+        systemBits.push(m.content);
+        continue;
+      }
+      const role = m.role === 'assistant' ? 'model' : 'user';
+      contents.push({ role, parts: [{ text: m.content }] });
+    }
+    const systemInstruction = systemBits.length
+      ? { parts: [{ text: systemBits.join('\n\n') }] }
+      : undefined;
+    return {
+      systemInstruction,
+      contents,
+      generationConfig: { temperature: 0.4, maxOutputTokens: 2_048 },
+    };
+  }
+
+  private async geminiGenerateContent(messages: LlmMessage[]): Promise<LlmResult> {
+    const model = geminiChatModelId(this.config);
+    const base = geminiGenerativeBase(this.config);
+    const u = new URL(
+      `${base}/models/${encodeURIComponent(model)}:generateContent`,
+    );
+    u.searchParams.set('key', getLlmApiKey(this.config));
+    const signal = AbortSignal.timeout(this.requestTimeoutMs());
+    let res: Response;
+    try {
+      res = await fetch(u.toString(), {
+        method: 'POST',
+        signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(this.buildGeminiRequestBody(messages)),
+      });
+    } catch (e: unknown) {
+      this.rethrowLlmNetError(e);
+    }
+    if (!res.ok) {
+      await this.throwGeminiHttp(res);
+    }
+    const json = (await res.json()) as {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+      usageMetadata?: {
+        promptTokenCount?: number;
+        candidatesTokenCount?: number;
+      };
+    };
+    const text =
+      json.candidates
+        ?.map((c) =>
+          (c.content?.parts ?? [])
+            .map((p) => p.text ?? '')
+            .join(''),
+        )
+        .join('') ?? '';
+    return {
+      text: text.trim(),
+      usage: {
+        promptTokens: json.usageMetadata?.promptTokenCount ?? 0,
+        completionTokens: json.usageMetadata?.candidatesTokenCount ?? 0,
+      },
+      model,
+    };
+  }
+
+  private async *geminiStreamChunks(
+    messages: LlmMessage[],
+  ): AsyncGenerator<string, void, void> {
+    const model = geminiChatModelId(this.config);
+    const base = geminiGenerativeBase(this.config);
+    const u = new URL(
+      `${base}/models/${encodeURIComponent(model)}:streamGenerateContent`,
+    );
+    u.searchParams.set('key', getLlmApiKey(this.config));
+    u.searchParams.set('alt', 'sse');
+    const signal = AbortSignal.timeout(this.requestTimeoutMs());
+    let res: Response;
+    try {
+      res = await fetch(u.toString(), {
+        method: 'POST',
+        signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(this.buildGeminiRequestBody(messages)),
+      });
+    } catch (e: unknown) {
+      this.rethrowLlmNetError(e);
+    }
+    if (!res.ok) {
+      await this.throwGeminiHttp(res);
+    }
+    const body = res.body;
+    if (!body) {
+      return;
+    }
+    const reader = body.getReader();
+    const dec = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += dec.decode(value, { stream: true });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        const t = line.replace(/\r$/, '').trim();
+        if (!t.startsWith('data:')) {
+          continue;
+        }
+        const data = t.replace(/^data:\s*/, '');
+        if (!data || data === '[DONE]') {
+          continue;
+        }
+        try {
+          const json = JSON.parse(data) as {
+            candidates?: { content?: { parts?: { text?: string }[] } }[];
+          };
+          const parts = json.candidates?.[0]?.content?.parts;
+          if (!parts?.length) {
+            continue;
+          }
+          for (const p of parts) {
+            if (p.text) {
+              yield p.text;
+            }
+          }
+        } catch {
+          /* ignore partial / non-JSON */
+        }
+      }
+    }
+  }
+
+  private async throwGeminiHttp(res: Response): Promise<never> {
+    const raw = await res.text().catch(() => '');
+    this.log.error(`Gemini HTTP status=${res.status} body=${raw.slice(0, 400)}`);
+    if (res.status === 429) {
+      throw new HttpException('LLM rate limit, try later', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    throw new HttpException('LLM request failed', HttpStatus.BAD_GATEWAY);
   }
 
   private async openAiChatCompletionsJson(messages: LlmMessage[]): Promise<LlmResult> {
@@ -187,11 +348,7 @@ export class LlmService {
   }
 
   private async openAiRequest(messages: LlmMessage[], stream: boolean) {
-    const apiKey = (
-      this.config.get('LLM_API_KEY') || this.config.get('OPENAI_API_KEY') || ''
-    )
-      .toString()
-      .trim();
+    const apiKey = getLlmApiKey(this.config);
     const model =
       this.config.get('CHAT_LLM_MODEL', 'gpt-4o-mini') || 'gpt-4o-mini';
     const base = (

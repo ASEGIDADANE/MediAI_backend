@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { hashDummyEmbedding } from './embedding-dummy.util';
+import { geminiEmbedContent, useGoogleGeminiLlm } from './llm-provider.util';
 
 export type Citation = { source: string; excerpt: string };
 
@@ -32,37 +33,44 @@ export class RagService {
     if (this.isDummyApiKey()) {
       return hashDummyEmbedding(text);
     }
-    const model =
-      this.config.get('EMBEDDING_MODEL', 'text-embedding-3-small') ||
-      'text-embedding-3-small';
-    const apiKey = this.apiKey();
-    const base = (
-      this.config.get('LLM_BASE_URL', 'https://api.openai.com/v1') || 'https://api.openai.com/v1'
-    ).replace(/\/$/, '');
+    let v: number[];
+    if (useGoogleGeminiLlm(this.config)) {
+      v = await geminiEmbedContent(this.config, text, 'RETRIEVAL_QUERY');
+    } else {
+      const model =
+        this.config.get('EMBEDDING_MODEL', 'text-embedding-3-small') ||
+        'text-embedding-3-small';
+      const apiKey = this.apiKey();
+      const base = (
+        this.config.get('LLM_BASE_URL', 'https://api.openai.com/v1') ||
+        'https://api.openai.com/v1'
+      ).replace(/\/$/, '');
 
-    const timeoutMs = Number(
-      this.config.get('EMBEDDING_REQUEST_TIMEOUT_MS', '30000') || 30_000,
-    );
-    const res = await fetch(`${base}/embeddings`, {
-      method: 'POST',
-      signal: AbortSignal.timeout(timeoutMs),
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ model, input: text }),
-    });
-    if (!res.ok) {
-      const t = await res.text().catch(() => '');
-      this.log.error(`Embeddings HTTP ${res.status}: ${t.slice(0, 200)}`);
-      throw new Error(`Embeddings request failed: ${res.status}`);
-    }
-    const json = (await res.json()) as {
-      data?: { embedding?: number[] }[];
-    };
-    const v = json.data?.[0]?.embedding;
-    if (!v || v.length < 2) {
-      throw new Error('Invalid embedding response');
+      const timeoutMs = Number(
+        this.config.get('EMBEDDING_REQUEST_TIMEOUT_MS', '30000') || 30_000,
+      );
+      const res = await fetch(`${base}/embeddings`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ model, input: text }),
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        this.log.error(`Embeddings HTTP ${res.status}: ${t.slice(0, 200)}`);
+        throw new Error(`Embeddings request failed: ${res.status}`);
+      }
+      const json = (await res.json()) as {
+        data?: { embedding?: number[] }[];
+      };
+      const out = json.data?.[0]?.embedding;
+      if (!out || out.length < 2) {
+        throw new Error('Invalid embedding response');
+      }
+      v = out;
     }
     this.pushCache(key, v);
     return v;

@@ -36,9 +36,10 @@ MediAI backend: NestJS + Prisma + PostgreSQL, JWT auth, onboarding, and **public
 | `DATABASE_URL` | — | PostgreSQL; **RAG** needs `pgvector` extension (see migration `..._rag_documents_pgvector`) |
 | `JWT_SECRET` | (required in prod) | |
 | `JWT_EXPIRES` | `7d` | |
-| `LLM_API_KEY` / `OPENAI_API_KEY` | — | `dummy` / unset = no paid API (deterministic dev text). Real key: `CHAT_LLM_MODEL` (default `gpt-4o-mini`), `LLM_BASE_URL` for OpenAI-compatible APIs. |
-| `EMBEDDING_API_KEY` | (falls back to LLM key) | Used when `RAG_ENABLED=true` for query + ingest |
-| `EMBEDDING_MODEL` | `text-embedding-3-small` | 1536-dim vectors in DB |
+| `LLM_API_KEY` / `OPENAI_API_KEY` | — | `dummy` / unset = no paid API (deterministic dev text). **OpenAI:** `sk-…`, `CHAT_LLM_MODEL` (default `gpt-4o-mini`), `LLM_BASE_URL`. **Google Gemini:** keys starting with `AIza` (or `LLM_PROVIDER=gemini`) use `GEMINI_MODEL` (default `gemini-1.5-flash`) and `GEMINI_API_BASE`. |
+| `EMBEDDING_API_KEY` | (falls back to LLM key) | **OpenAI path only:** when not using Gemini for embeddings |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` | OpenAI embedding model; 1536-dim |
+| `GEMINI_EMBEDDING_MODEL` | `gemini-embedding-001` | When `LLM_API_KEY` is `AIza…` (or `LLM_PROVIDER=gemini`), RAG uses Gemini `embedContent` with `outputDimensionality=1536` (same as DB) |
 | `USER_CONTEXT_MAX_CHARS` | `4000` | Max size of the personal **user context** block |
 | `RAG_ENABLED` | `false` | `true` = retrieve from `Document` / `DocumentChunk` (pgvector) |
 | `RAG_TOP_K` | `5` | Chunks per query |
@@ -54,7 +55,7 @@ MediAI backend: NestJS + Prisma + PostgreSQL, JWT auth, onboarding, and **public
 
 **Trust / compliance (export, delete, audit):** `GET /api/me/export` downloads a JSON bundle (profile, chat, support reports). `DELETE /api/me/account` requires `password` (email users) or `{ "confirm": "DELETE" }` (Google-only). **Support** rows for that user are **deleted** with the account. `AccountAuditLog` records sensitive **writes** (field names / sizes only, no full PHI). `X-Forwarded-For` is used for best-effort IP in audit rows only when you trust your reverse proxy. JWTs remain valid until **expiry** after delete (no blocklist in v1).
 
-**RAG + dummy vectors:** `RagService` and `scripts/ingest-guidelines.ts` share `src/chat/embedding-dummy.util.ts`. With `LLM_API_KEY` unset or dummy, query and ingest use the **same** deterministic hash. **Do not** query dummy embeddings against chunks produced with a **real** API key (re-ingest with one mode only).
+**RAG + dummy vectors:** `RagService` and `scripts/ingest-guidelines.ts` share `src/chat/embedding-dummy.util.ts` and `src/chat/llm-provider.util.ts`. With `LLM_API_KEY` unset or dummy, query and ingest use the **same** deterministic hash. With a **Gemini** key, both use `gemini-embedding-001` (or `GEMINI_EMBEDDING_MODEL`) at 1536 dimensions. **Do not** query dummy hashes against **real** vectors, or mix OpenAI-ingested chunks with Gemini query embeddings (re-ingest with one mode only).
 
 **Ingest guidelines (dev):** after migrate + `RAG_ENABLED` setup, run `npm run ingest:guidelines` (uses `LLM_API_KEY=dummy` → **hash** embeddings; for production similarity with OpenAI, ingest with a **real** key re-run). Default folder: `docs/guidelines/`.
 
