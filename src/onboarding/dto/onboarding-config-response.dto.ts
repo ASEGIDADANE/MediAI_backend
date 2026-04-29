@@ -24,7 +24,7 @@ export class SexOptionDto {
 }
 
 export class FeatureOptionDto {
-  @ApiProperty({ enum: ['ai-doctor', 'lab-test-interpretation', 'top-doctors'] })
+  @ApiProperty({ enum: ['ai-doctor', 'top-doctors'] })
   id: string;
   @ApiProperty()
   title: string;

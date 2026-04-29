@@ -8,7 +8,7 @@ export const navItems = [
     icon: 'chevronDown',
     items: [
       { label: 'AI Doctor', href: '/dashboard/ai-doctor', icon: 'brainCircuit' },
-      { label: 'Lab Test Interpretation', href: '/dashboard/lab-test-interpretation', icon: 'heartPulse' },
+      { label: 'Find Nearby Facilities', href: '/dashboard/facility-locator', icon: 'heartPulse' },
       { label: 'Second Opinion', href: '/dashboard/top-doctors', icon: 'userRoundSearch' },
     ],
   },
@@ -24,7 +24,6 @@ export const navItems = [
       { label: 'Glossary', href: '/glossary' },
     ],
   },
-  { label: 'For Labs', href: '/dashboard/lab-test-interpretation' },
 ];
 
 export const benefitItems = [
@@ -52,15 +51,6 @@ export const showcaseItems = [
     description: 'Get AI-powered virtual health assistance tailored to your medical history and symptoms.',
     ctaLabel: 'Chat With AI Doctor',
     href: '/dashboard/ai-doctor',
-  },
-  {
-    key: 'labs',
-    title: 'Lab Test Interpretation',
-    description:
-      'Upload your blood, urine, or other lab results and receive AI-powered analysis, biomarker explanations, and personalized interpretation reports.',
-    ctaLabel: 'Interpret Lab Results',
-    href: '/dashboard/lab-test-interpretation',
-    reverse: true,
   },
   {
     key: 'symptoms',
@@ -146,7 +136,7 @@ export const footerColumns = [
     links: [
       { label: 'AI Health Assistant', href: '/onboarding' },
       { label: 'AI Doctor', href: '/dashboard/ai-doctor' },
-      { label: 'Lab Test Interpretation', href: '/dashboard/lab-test-interpretation' },
+      { label: 'Find Nearby Facilities', href: '/dashboard/facility-locator' },
       { label: 'Symptom Checker', href: '/symptom-guide' },
       { label: 'Second Opinion', href: '/dashboard/top-doctors' },
     ],
@@ -154,7 +144,6 @@ export const footerColumns = [
   {
     title: 'Professional Solutions',
     links: [
-      { label: 'Lab Software', href: '/dashboard/lab-test-interpretation' },
       { label: 'Doctor Platform', href: '/dashboard' },
     ],
   },
