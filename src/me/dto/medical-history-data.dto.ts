@@ -27,12 +27,29 @@ export class MedicalHistoryDataDto {
   @IsString({ each: true })
   @ArrayMaxSize(MAX_ARR)
   @MaxLength(MAX_ITEM, { each: true })
+  familyHistory: string[];
+
+  @ApiProperty()
+  @IsString()
+  @MaxLength(MAX_STR)
+  familyHistoryDetails: string;
+
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(MAX_ARR)
+  @MaxLength(MAX_ITEM, { each: true })
   allergies: string[];
 
   @ApiProperty()
   @IsString()
   @MaxLength(MAX_STR)
   allergyDetails: string;
+
+  @ApiProperty()
+  @IsString()
+  @MaxLength(MAX_STR)
+  surgicalHistory: string;
 
   @ApiProperty()
   @IsString()

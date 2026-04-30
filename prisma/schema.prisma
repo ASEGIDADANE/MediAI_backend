@@ -51,6 +51,10 @@ model User {
   accountAuditLogs  AccountAuditLog[]
 
   chatConversations ChatConversation[]
+
+  doctorThreads     DoctorPatientThread[]  @relation("DoctorThreads")
+  patientThreads    DoctorPatientThread[]  @relation("PatientThreads")
+  sentDoctorPatientMessages DoctorPatientMessage[] @relation("DoctorPatientMessageSender")
 }
 
 /// Append-only style log for compliance; metadata must not store full PHI body text (field names / sizes only).
@@ -336,4 +340,42 @@ model HealthcareFacility {
 
   @@index([published, type])
   @@map("healthcare_facility")
+}
+
+/// Direct messaging thread between one doctor (professional UserProfile) and one patient
+/// (personal UserProfile). The `(doctorUserId, patientUserId)` pair is unique so we
+/// always have at most one open thread per pairing — fetching is "find or create".
+model DoctorPatientThread {
+  id            String   @id @default(uuid())
+  doctorUserId  String
+  doctor        User     @relation("DoctorThreads", fields: [doctorUserId], references: [id], onDelete: Cascade)
+  patientUserId String
+  patient       User     @relation("PatientThreads", fields: [patientUserId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  messages      DoctorPatientMessage[]
+
+  @@unique([doctorUserId, patientUserId])
+  @@index([doctorUserId, updatedAt(sort: Desc)])
+  @@index([patientUserId, updatedAt(sort: Desc)])
+  @@map("doctor_patient_thread")
+}
+
+/// One message inside a `DoctorPatientThread`. `senderUserId` is either the doctor
+/// or the patient (must be one of the two participants of the thread, enforced by
+/// service layer).
+model DoctorPatientMessage {
+  id           String   @id @default(uuid())
+  threadId     String
+  thread       DoctorPatientThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  senderUserId String
+  sender       User     @relation("DoctorPatientMessageSender", fields: [senderUserId], references: [id], onDelete: Cascade)
+  body         String
+  readAt       DateTime?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([threadId, createdAt])
+  @@map("doctor_patient_message")
 }

@@ -1,6 +1,86 @@
 /**
  * GET /api/ai-doctor/config — mirrors MediAI `src/lib/ai-doctor-content.ts`.
+ *
+ * The label strings here MUST match the canonical option arrays the medical
+ * history page uses (`chronicDiseaseOptions`, `allergyOptions`, etc. in
+ * MediAI `src/lib/dashboard-content.ts`). Both flows persist into the same
+ * `UserProfile.medicalHistory` JSON document, so a value picked in the wizard
+ * has to match a chip on the page (and vice versa) for round-trips to work.
  */
+
+const chronicDiseaseOptions = [
+  'Diabetes',
+  'Hypertension',
+  'Cardiovascular Disease',
+  'Thyroid Disorder',
+  'Asthma / COPD',
+  'Arthritis',
+  'Cancer',
+  'Kidney Disease',
+];
+
+const familyHistoryOptions = [
+  'Heart Disease',
+  'Diabetes',
+  'Cancer',
+  'Osteoporosis',
+  'Stroke',
+  'Mental Illness',
+  'Asthma / Allergies',
+];
+
+const allergyOptions = [
+  'Penicillin',
+  'Sulfa Drugs',
+  'Peanuts',
+  'Dairy / Lactose',
+  'Shellfish',
+  'Pollen',
+  'Latex',
+  'Insect Stings',
+];
+
+const smokingOptions = [
+  'Non-smoker',
+  '1-10 Cigarettes/day',
+  'About 1 pack/day',
+  'More than 1 pack/day',
+  'E-Cigarettes / Vaping',
+];
+
+const alcoholOptions = [
+  'Non-drinker',
+  '1-3 drinks/week',
+  '4-7 drinks/week',
+  '8-14 drinks/week',
+  '15+ drinks/week',
+];
+
+const dietOptions = [
+  'Non-specific diet',
+  'Balanced Meals',
+  'Frequent Fast Food',
+  'Vegetarian / Vegan',
+  'Specific Diet Plan (keto, high-protein, etc.)',
+];
+
+const sleepOptions = [
+  'Less than 6 hours',
+  '7-9 hours',
+  'More than 9 hours',
+  'Varies / Interrupted',
+];
+
+const stressOptions = [
+  'Rarely Stressed',
+  'Manageable Stress',
+  'Regular (daily) Stress',
+  'Almost Always Stressed',
+];
+
+const toChoiceOptions = (labels: string[]) =>
+  labels.map((label) => ({ label }));
+
 export const aiDoctorBenefits = [
   'Complete your health Profile',
   'Ask any health-related questions',
@@ -17,7 +97,7 @@ export const medicalHistorySteps = [
       'Include any chronic conditions or medical issues experienced. Essential for understanding health history and personalized care.',
     sectionTitle: 'Medical History',
     stepKind: 'yes-no-checklist',
-    options: ['Diabetes', 'HyperTension', 'Cardiovascular diseases', 'Thyroid disorders'],
+    options: chronicDiseaseOptions,
     placeholder: 'e.g. diabetes, high blood pressure, heart attack 2 years ago',
   },
   {
@@ -27,7 +107,7 @@ export const medicalHistorySteps = [
       'List any chronic diseases present in your family history. This will help us indicate the genetic risks.',
     sectionTitle: 'Medical History',
     stepKind: 'yes-no-checklist',
-    options: ['Heart Diseases', 'Diabetes', 'Cancer', 'Osteoporosis'],
+    options: familyHistoryOptions,
     placeholder:
       'e.g. Mother with diabetes, father had heart disease, sibling with asthma',
   },
@@ -37,7 +117,7 @@ export const medicalHistorySteps = [
     description: 'List any allergies you have.',
     sectionTitle: 'Medical History',
     stepKind: 'yes-no-checklist',
-    options: ['Soy', 'Dairy/Lactose', 'Fish/Shellfish'],
+    options: allergyOptions,
     placeholder: 'e.g. Peanut allergy, Penicillin allergy, tree and grass pollen',
   },
   {
@@ -71,28 +151,16 @@ export const medicalHistorySteps = [
     description: '',
     sectionTitle: 'Life Patterns & Habits',
     stepKind: 'choice-list',
-    choiceOptions: [
-      { label: 'Non-smoker' },
-      { label: '1-10 Cigarettes' },
-      { label: 'About 1 pack' },
-      { label: 'More than 1 pack' },
-      { label: 'Electronic Cigarettes/Vaping' },
-    ],
+    choiceOptions: toChoiceOptions(smokingOptions),
   },
   {
     id: 'weekly-alcohol-intake',
     title: 'Weekly Alcohol intake',
     description:
-      'A standard drink is equivalent to a regular can or bottle of beer, a typical serving (glass) of wine, or a short of distilled spirits.',
+      'A standard drink is equivalent to a regular can or bottle of beer, a typical serving (glass) of wine, or a shot of distilled spirits.',
     sectionTitle: 'Life Patterns & Habits',
     stepKind: 'choice-list',
-    choiceOptions: [
-      { label: 'Non-drinker' },
-      { label: '1-3 standard drinks' },
-      { label: '4-7 standard drinks' },
-      { label: '8-14 standard drinks' },
-      { label: '15+ standard drinks' },
-    ],
+    choiceOptions: toChoiceOptions(alcoholOptions),
   },
   {
     id: 'dietary-habits',
@@ -100,15 +168,7 @@ export const medicalHistorySteps = [
     description: '',
     sectionTitle: 'Life Patterns & Habits',
     stepKind: 'choice-list',
-    choiceOptions: [
-      { label: 'Non-specific diet' },
-      { label: 'Balanced Meals' },
-      { label: 'Frequent Fast Food' },
-      {
-        label: 'Specific diet Plan',
-        description: 'A particular diet plan (e.g. keto, high-protein, vegan)',
-      },
-    ],
+    choiceOptions: toChoiceOptions(dietOptions),
   },
   {
     id: 'weekly-activity-level',
@@ -119,18 +179,20 @@ export const medicalHistorySteps = [
     choiceOptions: [
       {
         label: 'Inactive',
-        description: 'No Regular physical activity or structured exercise',
+        description: 'No regular physical activity or structured exercise',
       },
       {
-        label: 'Lightly active',
-        description: 'Light Physical activities such as walking or leisurely cycling',
+        label: 'Lightly Active',
+        description:
+          'Light physical activities such as walking or leisurely cycling',
       },
       {
-        label: 'Moderately active',
-        description: 'Regular moderate exercises like running, swimming, or playing sports',
+        label: 'Moderately Active',
+        description:
+          'Regular moderate exercises like running, swimming, or playing sports',
       },
       {
-        label: 'Very active',
+        label: 'Very Active',
         description: 'Frequent intense exercises and sports training',
       },
     ],
@@ -141,12 +203,7 @@ export const medicalHistorySteps = [
     description: '',
     sectionTitle: 'Life Patterns & Habits',
     stepKind: 'choice-list',
-    choiceOptions: [
-      { label: '7-9 hours' },
-      { label: 'less than 6 hours' },
-      { label: 'More than 9 hours' },
-      { label: 'Varies significantly or interrupted sleep' },
-    ],
+    choiceOptions: toChoiceOptions(sleepOptions),
   },
   {
     id: 'stress-level',
@@ -154,12 +211,7 @@ export const medicalHistorySteps = [
     description: '',
     sectionTitle: 'Life Patterns & Habits',
     stepKind: 'choice-list',
-    choiceOptions: [
-      { label: 'Rarely Stressed' },
-      { label: 'Manageable stress' },
-      { label: 'Regular (daily) stress' },
-      { label: 'Almost always stressed' },
-    ],
+    choiceOptions: toChoiceOptions(stressOptions),
   },
 ];
 

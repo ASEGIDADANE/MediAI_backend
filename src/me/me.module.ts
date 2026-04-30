@@ -7,5 +7,6 @@ import { MeTrustService } from './me-trust.service';
 @Module({
   controllers: [MeController],
   providers: [MeService, AccountAuditService, MeTrustService],
+  exports: [MeService],
 })
 export class MeModule {}

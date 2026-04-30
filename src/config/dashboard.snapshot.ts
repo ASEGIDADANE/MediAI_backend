@@ -22,6 +22,12 @@ export const dashboardCards = [
     accent: 'bot' as const,
   },
   {
+    title: 'Messages With Doctors',
+    description: 'Chat directly with doctors who reach out to you.',
+    href: '/dashboard/messages',
+    accent: 'messages' as const,
+  },
+  {
     title: 'Find Nearby Facilities',
     description: 'Locate verified hospitals, clinics, and pharmacies near you.',
     href: '/dashboard/facility-locator',
