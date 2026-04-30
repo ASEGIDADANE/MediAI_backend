@@ -312,7 +312,7 @@ model EducationResource {
   @@map("education_resource")
 }
 
-/// Public directory for dashboard “Healthcare Facility Locator” (MediAI `healthcareFacilities` in `dashboard-content.ts`).
+/// Public directory for dashboard “Healthcare Facility Locator” (MediAI consumes `GET /health-facilities` — see `health-facilities-api.ts`).
 enum HealthcareFacilityType {
   hospital
   pharmacy

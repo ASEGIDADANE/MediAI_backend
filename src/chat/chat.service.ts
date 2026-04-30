@@ -2,13 +2,21 @@ import { Injectable } from '@nestjs/common';
 import { getChatConfigSnapshot } from '../config/chat.snapshot';
 import { chatReplyAuthor, getReplyForMode, type ChatMode } from '../config/chat-reply.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { RagService } from './rag.service';
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rag: RagService,
+  ) {}
 
   getConfig() {
-    return getChatConfigSnapshot();
+    return {
+      ...getChatConfigSnapshot(),
+      /** True when `RAG_ENABLED=true` and the API may attach guideline citations to chat */
+      ragEnabled: this.rag.isEnabled(),
+    };
   }
 
   getReply(mode: ChatMode, message: string) {

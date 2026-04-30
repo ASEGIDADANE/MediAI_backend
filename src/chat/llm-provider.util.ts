@@ -56,7 +56,11 @@ export function geminiGenerativeBaseFromEnv(env: NodeJS.ProcessEnv): string {
     .replace(/\/$/, '');
 }
 
-/** Model id for `.../models/{id}:generateContent` (e.g. gemini-1.5-flash). */
+/**
+ * Model id for `.../models/{id}:generateContent`.
+ * The unversioned `gemini-1.5-flash` is no longer valid on v1beta (404) — use a current id,
+ * e.g. `gemini-2.0-flash` or `gemini-1.5-flash-002` (override with `GEMINI_MODEL`).
+ */
 export function geminiChatModelId(config: ConfigService): string {
   const explicit = (config.get('GEMINI_MODEL') || '').toString().trim();
   if (explicit) {
@@ -66,7 +70,7 @@ export function geminiChatModelId(config: ConfigService): string {
   if (fallback && !fallback.toLowerCase().includes('gpt')) {
     return fallback;
   }
-  return 'gemini-1.5-flash';
+  return 'gemini-2.0-flash';
 }
 
 /** Model id for `.../models/{id}:embedContent` (e.g. gemini-embedding-001). */

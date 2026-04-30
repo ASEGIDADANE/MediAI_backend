@@ -1,6 +1,6 @@
 # Health facilities API — v1 integration contract
 
-This document describes the **public read-only** HTTP API for the MediAI dashboard **Healthcare Facility Locator**. It is aligned with the MediAI TypeScript type `HealthcareFacility` in `MediAI/src/lib/dashboard-content.ts` (same JSON field names and semantics).
+This document describes the **public read-only** HTTP API for the MediAI dashboard **Healthcare Facility Locator**. It is aligned with the MediAI type `HealthcareFacilityDto` in `MediAI/src/lib/health-facilities-api.ts` (same JSON field names and semantics; optional fields may be omitted in JSON).
 
 **Related:** Implementation prompt and frontend reference — `docs/HEALTH_FACILITIES_V1_PROMPT.md` (Section A).
 
@@ -34,6 +34,9 @@ Example local: `http://localhost:4000/api/health-facilities`
 | `pageSize` | integer | `20` | Min 1, max 50 |
 | `type` | enum | — | Optional: `hospital`, `pharmacy`, or `clinic` |
 | `q` | string | — | Optional: case-insensitive search in `name` and `address` (max 120 characters). Empty or whitespace-only is treated as no search. |
+| `lat` | number | — | Optional: user latitude (decimal degrees). When both `lat` and `lng` are set, results are sorted by distance and each item may include `distanceKm`. |
+| `lng` | number | — | Optional: user longitude (paired with `lat`). |
+| `radiusKm` | number | `10` | Optional search radius in km when `lat`/`lng` are set (min **0.5**, max **100**). |
 
 ### Response `200`
 
@@ -59,13 +62,13 @@ Example local: `http://localhost:4000/api/health-facilities`
 }
 ```
 
-- Only rows with **`published: true`** are returned.
-- `items` are ordered by **`name`** ascending.
-- Each object in `items` matches the **single-facility** JSON shape below (same as one element of the static `healthcareFacilities` array in the frontend).
+- Only rows with **`published: true`** are returned when **no** `lat`/`lng` are sent (directory list from the database, ordered by **`name`** ascending).
+- When **`lat` and `lng`** are both sent, the implementation uses geo-aware sourcing (e.g. live nearby POIs), sorted by distance, with optional `distanceKm` per item.
+- Each object in `items` matches the **single-facility** JSON shape below.
 
 ### Client integration note
 
-The Next app currently uses a **flat array** from static data. When calling this API, use **`response.items`** as `HealthcareFacility[]` (see MediAI types).
+The MediAI app calls **`GET /health-facilities`** and uses **`response.items`** as `HealthcareFacilityDto[]` (see `MediAI/src/lib/health-facilities-api.ts`). Optional detail: **`GET /health-facilities/:id`** from `app/dashboard/facility-locator/[facilityId]/page.tsx`.
 
 ---
 
@@ -104,12 +107,13 @@ Same object shape as one `items` entry:
 | `name` | string | |
 | `type` | string | `hospital` \| `pharmacy` \| `clinic` |
 | `address` | string | |
-| `phone` | string | |
-| `rating` | number | Floating-point |
+| `phone` | string | Optional in JSON |
+| `rating` | number | Optional; floating-point when present |
 | `verified` | boolean | |
 | `latitude` | number | WGS84 |
 | `longitude` | number | WGS84 |
-| `openNow` | boolean | camelCase in JSON |
+| `openNow` | boolean | Optional; camelCase in JSON when present |
+| `distanceKm` | number | Optional; present on geo-aware list responses when `lat`/`lng` are sent |
 
 ---
 
@@ -140,7 +144,6 @@ Error bodies follow Nest’s default **JSON** exception format (`message`, `stat
 
 - Admin create/update/delete for facilities (no public write API).
 - Authentication for read.
-- Geospatial “nearest facility” or distance sorting (use client-side or a future API version if needed).
 
 ---
 

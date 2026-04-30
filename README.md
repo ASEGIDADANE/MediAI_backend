@@ -36,7 +36,7 @@ MediAI backend: NestJS + Prisma + PostgreSQL, JWT auth, onboarding, and **public
 | `DATABASE_URL` | — | PostgreSQL. **RAG** requires the **`vector`** extension (`CREATE EXTENSION vector;` in migration `..._rag_documents_pgvector`). Use a server or Docker image with **pgvector** installed (repo `docker-compose` uses `pgvector/pgvector:pg16`). Plain `postgres` images may not provide the extension. |
 | `JWT_SECRET` | (required in prod) | |
 | `JWT_EXPIRES` | `7d` | |
-| `LLM_API_KEY` / `OPENAI_API_KEY` | — | `dummy` / unset = no paid API (deterministic dev text). **OpenAI:** `sk-…`, `CHAT_LLM_MODEL` (default `gpt-4o-mini`), `LLM_BASE_URL`. **Google Gemini:** keys starting with `AIza` (or `LLM_PROVIDER=gemini`) use `GEMINI_MODEL` (default `gemini-1.5-flash`) and `GEMINI_API_BASE`. |
+| `LLM_API_KEY` / `OPENAI_API_KEY` | — | `dummy` / unset = no paid API (deterministic dev text). **OpenAI:** `sk-…`, `CHAT_LLM_MODEL` (default `gpt-4o-mini`), `LLM_BASE_URL`. **Google Gemini:** keys starting with `AIza` (or `LLM_PROVIDER=gemini`) use `GEMINI_MODEL` (default `gemini-2.0-flash`) and `GEMINI_API_BASE`. |
 | `EMBEDDING_API_KEY` | (falls back to LLM key) | **OpenAI path only:** when not using Gemini for embeddings |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | OpenAI embedding model; 1536-dim |
 | `GEMINI_EMBEDDING_MODEL` | `gemini-embedding-001` | When `LLM_API_KEY` is `AIza…` (or `LLM_PROVIDER=gemini`), RAG uses Gemini `embedContent` with `outputDimensionality=1536` (same as DB) |
@@ -73,11 +73,11 @@ Swagger: `http://localhost:4000/docs` (or your `PORT`).
 | `GET` | `/api/top-doctors` | Paginated list: `page`, `pageSize` (max 50), optional `specialty`, optional `q` (max 120 chars; searches name, specialty, sub-specialty, diseases JSON text). |
 | `GET` | `/api/top-doctors/:id` | Full detail (same JSON shape as MediAI `src/lib/top-doctors-content.ts` `TopDoctor`). **404** if missing or unpublished. |
 
-**Healthcare facilities (public, facility locator):** Same shape as MediAI `healthcareFacilities` in `dashboard-content.ts` (hospital, pharmacy, clinic; stable ids `fac-001`, …). Read-only; no admin API in v1.
+**Healthcare facilities (public, facility locator):** MediAI loads the directory from this API (`GET /health-facilities` → `items[]`, same JSON shape as `HealthcareFacilityDto` in `MediAI/src/lib/health-facilities-api.ts`). Stable ids such as `fac-001`. Read-only; no admin API in v1.
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/api/health-facilities` | Paginated list: `page`, `pageSize` (max 50), optional `type` (`hospital` \| `pharmacy` \| `clinic`), optional `q` (max 120 chars; name + address). |
+| `GET` | `/api/health-facilities` | Paginated list: `page`, `pageSize` (max 50), optional `type` (`hospital` \| `pharmacy` \| `clinic`), optional `q` (max 120 chars; name + address). Optional `lat`+`lng` (with optional `radiusKm`, default 10 km) for geo-aware ordering and `distanceKm` on items. |
 | `GET` | `/api/health-facilities/:id` | One facility by id (e.g. `fac-001`). **400** if id format is invalid. **404** if missing or unpublished. |
 
 **Integration details (query params, examples, errors, ops):** `docs/HEALTH_FACILITIES_API_V1.md`.
