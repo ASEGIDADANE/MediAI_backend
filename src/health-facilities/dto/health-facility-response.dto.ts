@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { HealthcareFacilityType } from '../../generated/prisma/client';
 
 export class HealthcareFacilityDto {
@@ -14,11 +14,11 @@ export class HealthcareFacilityDto {
   @ApiProperty()
   address: string;
 
-  @ApiProperty()
-  phone: string;
+  @ApiPropertyOptional()
+  phone?: string;
 
-  @ApiProperty()
-  rating: number;
+  @ApiPropertyOptional()
+  rating?: number;
 
   @ApiProperty()
   verified: boolean;
@@ -29,8 +29,21 @@ export class HealthcareFacilityDto {
   @ApiProperty()
   longitude: number;
 
-  @ApiProperty()
-  openNow: boolean;
+  @ApiPropertyOptional()
+  openNow?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Source of the row: `directory` for the in-house verified directory, `osm` for live OpenStreetMap data.',
+    enum: ['directory', 'osm'],
+  })
+  source?: 'directory' | 'osm';
+
+  @ApiPropertyOptional({
+    description:
+      'Distance from the requested `lat`/`lng` in kilometres, included only on geo-aware list calls.',
+  })
+  distanceKm?: number;
 }
 
 export class HealthFacilitiesListResponseDto {

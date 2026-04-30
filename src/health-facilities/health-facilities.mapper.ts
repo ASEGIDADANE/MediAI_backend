@@ -15,5 +15,6 @@ export function toHealthcareFacilityDto(
     latitude: row.latitude,
     longitude: row.longitude,
     openNow: row.openNow,
+    source: 'directory',
   };
 }

@@ -22,10 +22,10 @@ export const dashboardCards = [
     accent: 'bot' as const,
   },
   {
-    title: 'Lab Tests & Screening',
-    description: '',
-    href: '/dashboard/lab-test-interpretation',
-    accent: 'lab' as const,
+    title: 'Find Nearby Facilities',
+    description: 'Locate verified hospitals, clinics, and pharmacies near you.',
+    href: '/dashboard/facility-locator',
+    accent: 'facilities' as const,
   },
   {
     title: 'Check Up Plan',
@@ -38,7 +38,7 @@ export const dashboardCards = [
     title: 'Health Reports',
     description: 'Coming Soon',
     href: '#',
-    accent: 'lab' as const,
+    accent: 'facilities' as const,
     muted: true,
   },
 ] as const;

@@ -35,7 +35,7 @@ export class DashboardAlignedProfileDto {
   sexAtBirth: string;
 
   @ApiProperty({
-    enum: ['ai-doctor', 'lab-interpretation', 'top-doctors'],
+    enum: ['ai-doctor', 'top-doctors'],
     description: 'Kebab-case IDs as used by the MediAI frontend',
   })
   preferredFeature: string;

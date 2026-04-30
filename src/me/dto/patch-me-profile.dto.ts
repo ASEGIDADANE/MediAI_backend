@@ -2,12 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ETHIOPIAN_REGIONS_LIST } from '../../onboarding/onboarding.constants';
 
-const FEATURES = [
-  'ai-doctor',
-  'lab-test-interpretation',
-  'lab-interpretation',
-  'top-doctors',
-] as const;
+const FEATURES = ['ai-doctor', 'top-doctors'] as const;
 
 export const MAX_PROFILE_JSON_CHARS = 28_000;
 

@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "types": ["node"],
+    "types": ["node", "jest"],
     "module": "commonjs",
     "moduleResolution": "node",
     "esModuleInterop": true,
@@ -22,5 +22,5 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false
   },
-  "exclude": ["node_modules", "dist", "test", "**/*spec.ts", "prisma.config.ts"]
+  "exclude": ["node_modules", "dist", "prisma.config.ts"]
 }

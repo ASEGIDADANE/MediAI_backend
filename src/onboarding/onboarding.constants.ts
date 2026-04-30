@@ -68,11 +68,6 @@ export const featureOptions = [
     description: 'Ask any health questions and get tailored insights.',
   },
   {
-    id: 'lab-test-interpretation' as const,
-    title: 'Lab Test Interpretation',
-    description: 'Easily understand and interpret your lab test results.',
-  },
-  {
     id: 'top-doctors' as const,
     title: 'Consultation with Top Doctors',
     description: 'Access 350+ top doctors from the US and Ethiopia.',

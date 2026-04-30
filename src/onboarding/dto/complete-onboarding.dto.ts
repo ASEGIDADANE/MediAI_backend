@@ -13,12 +13,7 @@ import {
 } from 'class-validator';
 import { ETHIOPIAN_REGIONS_LIST } from '../onboarding.constants';
 
-const FEATURES = [
-  'ai-doctor',
-  'lab-test-interpretation',
-  'lab-interpretation', // legacy alias → stored as lab_interpretation
-  'top-doctors',
-] as const;
+const FEATURES = ['ai-doctor', 'top-doctors'] as const;
 
 export class CompleteOnboardingDto {
   @ApiProperty({ enum: ['personal', 'professional'] })
