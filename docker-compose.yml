@@ -8,7 +8,8 @@ services:
       POSTGRES_PASSWORD: medi_ai
       POSTGRES_DB: medi_ai
     ports:
-      - '5432:5432'
+      # Host 5432 is often taken by a system PostgreSQL; use 5433 to avoid bind errors.
+      - '5433:5432'
     volumes:
       - medi_ai_pg_data:/var/lib/postgresql/data
 

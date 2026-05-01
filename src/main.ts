@@ -2,11 +2,13 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { PrismaClientExceptionFilter } from './filters/prisma-client-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.setGlobalPrefix('api');
+  app.useGlobalFilters(new PrismaClientExceptionFilter());
   app.enableShutdownHooks();
 
   const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
