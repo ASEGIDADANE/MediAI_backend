@@ -21,7 +21,7 @@ const BCRYPT_ROUNDS = 12;
 const RESET_TOKEN_BYTES = 32;
 const RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-export type AuthUserView = { id: string; email: string };
+export type AuthUserView = { id: string; email: string; appRole: UserAppRole };
 
 @Injectable()
 export class AuthService {
@@ -135,7 +135,10 @@ export class AuthService {
     }
 
     const accessToken = await this.signAccessToken(user.id, user.email, user.appRole);
-    return { accessToken, user: { id: user.id, email: user.email } };
+    return {
+      accessToken,
+      user: { id: user.id, email: user.email, appRole: user.appRole },
+    };
   }
 
   private async signAccessToken(
@@ -159,7 +162,10 @@ export class AuthService {
     });
 
     const accessToken = await this.signAccessToken(user.id, user.email, user.appRole);
-    return { accessToken, user: { id: user.id, email: user.email } };
+    return {
+      accessToken,
+      user: { id: user.id, email: user.email, appRole: user.appRole },
+    };
   }
 
   async login(dto: LoginDto): Promise<{ accessToken: string; user: AuthUserView }> {
@@ -175,7 +181,10 @@ export class AuthService {
     }
 
     const accessToken = await this.signAccessToken(user.id, user.email, user.appRole);
-    return { accessToken, user: { id: user.id, email: user.email } };
+    return {
+      accessToken,
+      user: { id: user.id, email: user.email, appRole: user.appRole },
+    };
   }
 
   async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
@@ -238,6 +247,6 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException();
     }
-    return { id: user.id, email: user.email };
+    return { id: user.id, email: user.email, appRole: user.appRole };
   }
 }

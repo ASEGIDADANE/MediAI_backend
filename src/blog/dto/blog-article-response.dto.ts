@@ -8,7 +8,7 @@ export class BlogSectionDto {
   body!: string;
 }
 
-/** Matches MediAI `src/lib/blog-content.ts` `BlogArticle`. */
+/** Matches MediAI `src/lib/blog-api.ts` `BlogArticleDto`. */
 export class BlogArticleResponseDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
@@ -41,6 +41,35 @@ export class BlogArticleResponseDto {
 export class BlogArticlesListResponseDto {
   @ApiProperty({ type: [BlogArticleResponseDto] })
   items!: BlogArticleResponseDto[];
+
+  @ApiProperty()
+  page!: number;
+
+  @ApiProperty()
+  pageSize!: number;
+
+  @ApiProperty()
+  total!: number;
+}
+
+/** Admin article row: public shape + curation fields (MediAI `BlogArticleAdminDto`). */
+export class BlogArticleAdminResponseDto extends BlogArticleResponseDto {
+  @ApiProperty()
+  published!: boolean;
+
+  @ApiProperty({ example: '2025-01-07T12:00:00.000Z' })
+  publishedAt!: string;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Raw display override (maps to public `date`)' })
+  dateDisplay!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  sortOrder!: number | null;
+}
+
+export class BlogArticlesAdminListResponseDto {
+  @ApiProperty({ type: [BlogArticleAdminResponseDto] })
+  items!: BlogArticleAdminResponseDto[];
 
   @ApiProperty()
   page!: number;

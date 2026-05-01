@@ -13,8 +13,12 @@ import {
   BlogCategoriesResponseDto,
   BlogHomeResponseDto,
 } from './dto/blog-article-response.dto';
+import {
+  BlogAdminArticlesQueryDto,
+  takeSkipBlogAdminArticles,
+} from './dto/blog-admin-articles-query.dto';
 import { takeSkipBlogArticles, BlogArticlesQueryDto } from './dto/blog-articles-query.dto';
-import { formatBlogDateFromPublishedAt, toBlogArticleDto } from './blog.mapper';
+import { toBlogArticleAdminDto, toBlogArticleDto } from './blog.mapper';
 
 @Injectable()
 export class BlogService {
@@ -81,6 +85,56 @@ export class BlogService {
     return toBlogArticleDto(row);
   }
 
+  async listArticlesAdmin(dto: BlogAdminArticlesQueryDto) {
+    const { take, skip, page, pageSize } = takeSkipBlogAdminArticles(
+      dto.page,
+      dto.pageSize,
+    );
+    const category = dto.category?.trim();
+    const q = dto.q?.trim().slice(0, 120);
+    const published = dto.published ?? 'all';
+
+    const where: Prisma.BlogArticleWhereInput = {
+      ...(published === 'all' ? {} : { published: published === 'true' }),
+      ...(category
+        ? { category: { equals: category, mode: 'insensitive' } }
+        : {}),
+      ...(q
+        ? {
+            OR: [
+              { title: { contains: q, mode: 'insensitive' } },
+              { intro: { contains: q, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.blogArticle.findMany({
+        where,
+        orderBy: [{ publishedAt: 'desc' }, { title: 'asc' }],
+        take,
+        skip,
+      }),
+      this.prisma.blogArticle.count({ where }),
+    ]);
+
+    return {
+      items: rows.map(toBlogArticleAdminDto),
+      page,
+      pageSize,
+      total,
+    };
+  }
+
+  async getByIdAdmin(id: string) {
+    const row = await this.prisma.blogArticle.findUnique({ where: { id } });
+    if (!row) {
+      throw new NotFoundException('Article not found');
+    }
+    return toBlogArticleAdminDto(row);
+  }
+
   async getHome(): Promise<BlogHomeResponseDto> {
     const row = await this.prisma.blogHomeConfig.findUnique({
       where: { id: 'default' },
@@ -123,7 +177,7 @@ export class BlogService {
     const row = await this.prisma.blogArticle.create({
       data: this.createDataFromDto(d),
     });
-    return toBlogArticleDto(row);
+    return toBlogArticleAdminDto(row);
   }
 
   async patchByAdmin(id: string, dto: PatchBlogArticleBodyDto) {
@@ -154,7 +208,7 @@ export class BlogService {
     if (dto.published !== undefined) data.published = dto.published;
 
     const row = await this.prisma.blogArticle.update({ where: { id }, data });
-    return toBlogArticleDto(row);
+    return toBlogArticleAdminDto(row);
   }
 
   async softDeleteByAdmin(id: string) {
