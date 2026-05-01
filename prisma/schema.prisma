@@ -252,7 +252,7 @@ model TopDoctor {
   @@map("top_doctor")
 }
 
-/// Marketing blog post (MediAI `BlogArticle` from `src/lib/blog-content.ts`).
+/// Marketing blog post (MediAI `BlogArticleDto` in `src/lib/blog-api.ts`).
 /// `date` in API = `dateDisplay` if set, else formatted `publishedAt` (en-US).
 model BlogArticle {
   id         String   @id @default(uuid())

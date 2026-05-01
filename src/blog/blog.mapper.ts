@@ -1,5 +1,6 @@
 import type { BlogArticle } from '../generated/prisma/client';
 import {
+  BlogArticleAdminResponseDto,
   BlogArticleResponseDto,
   BlogSectionDto,
 } from './dto/blog-article-response.dto';
@@ -57,5 +58,15 @@ export function toBlogArticleDto(row: BlogArticle): BlogArticleResponseDto {
     imageSrc: row.imageSrc,
     intro: row.intro,
     sections: mapSections(row),
+  };
+}
+
+export function toBlogArticleAdminDto(row: BlogArticle): BlogArticleAdminResponseDto {
+  return {
+    ...toBlogArticleDto(row),
+    published: row.published,
+    publishedAt: row.publishedAt.toISOString(),
+    dateDisplay: row.dateDisplay,
+    sortOrder: row.sortOrder,
   };
 }

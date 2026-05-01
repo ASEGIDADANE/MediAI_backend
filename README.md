@@ -84,13 +84,13 @@ Swagger: `http://localhost:4000/docs` (or your `PORT`).
 
 **Admin — top doctors (JWT + `appRole = admin`):** `POST /api/admin/top-doctors` (create), `PATCH /api/admin/top-doctors/:id` (partial update), `DELETE /api/admin/top-doctors/:id` (soft-delete: `published = false`). Same Bearer auth as other admin routes.
 
-**Seed (dev):** after migrate, `npx prisma db seed` inserts one sample doctor (if empty), **blog** articles from `prisma/data/blog-seed.json` (exported from MediAI `blog-content`) plus `blog_home_config`, **3 education resources** (symptom guide, glossary, knowledge base) if empty, and **healthcare facilities** from `prisma/data/health-facilities-seed.json` (if the table is empty) for the facility locator.
+**Seed (dev):** after migrate, `npx prisma db seed` inserts one sample doctor (if empty), **blog** articles from `prisma/data/blog-seed.json` (shape aligned with MediAI `blog-api` / former static blog) plus `blog_home_config`, **3 education resources** (symptom guide, glossary, knowledge base) if empty, and **healthcare facilities** from `prisma/data/health-facilities-seed.json` (if the table is empty) for the facility locator.
 
 **Blog (public, MediAI `BlogArticle` shape):** `date` in JSON is **`dateDisplay` when set**, else derived from **`publishedAt`** (UTC) as `Jan 07, 2025` style. **Comments / likes are not in v1.**
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/api/blog/home` | Curated UUIDs: `featuredArticleId`, `popularArticleIds`, `aiHealthcareArticleIds`, `secondOpinionArticleIds`, `companyNewsArticleIds` (replaces hardcoded lists in `blog-content.ts`). |
+| `GET` | `/api/blog/home` | Curated UUIDs: `featuredArticleId`, `popularArticleIds`, `aiHealthcareArticleIds`, `secondOpinionArticleIds`, `companyNewsArticleIds` (replaces hardcoded lists in the MediAI app; see `MediAI/src/lib/blog-api.ts`). |
 | `GET` | `/api/blog/categories` | Distinct categories, published only. |
 | `GET` | `/api/blog/articles` | Paginated: `page`, `pageSize` (max 50), optional `category` (case-insensitive equality), optional `q` (title + intro, max 120 chars). |
 | `GET` | `/api/blog/articles/:id` | Full article. **404** if missing or unpublished. |
