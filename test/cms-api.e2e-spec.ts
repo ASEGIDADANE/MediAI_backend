@@ -117,4 +117,15 @@ describe('MediAI CMS & chat routes (e2e)', () => {
       .send({ message: '   ' })
       .expect(400);
   });
+
+  it('GET /api/education/resources returns list envelope', async () => {
+    const res = await request(app.getHttpServer()).get('/api/education/resources').expect(200);
+    expect(res.body).toMatchObject({
+      items: expect.any(Array),
+    });
+  });
+
+  it('GET /api/education/resources/:slug 404 for invalid slug', () => {
+    return request(app.getHttpServer()).get('/api/education/resources/not-a-valid-slug').expect(404);
+  });
 });

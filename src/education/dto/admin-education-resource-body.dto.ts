@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -60,5 +60,14 @@ export class CreateEducationResourceBodyDto {
 }
 
 export class PatchEducationResourceBodyDto extends PartialType(
-  CreateEducationResourceBodyDto,
-) {}
+  OmitType(CreateEducationResourceBodyDto, ['sortOrder'] as const),
+) {
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Omit to leave unchanged; send null to clear sort order in the database.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number | null;
+}

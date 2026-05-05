@@ -29,9 +29,9 @@ import {
   PatchEducationResourceBodyDto,
 } from './dto/admin-education-resource-body.dto';
 import {
-  EducationResourceResponseDto,
-  EducationResourcesListResponseDto,
-} from './dto/education-resource-response.dto';
+  EducationResourceAdminResponseDto,
+  EducationResourcesAdminListResponseDto,
+} from './dto/education-resource-admin-response.dto';
 import { EducationService } from './education.service';
 
 @ApiTags('admin')
@@ -45,33 +45,45 @@ export class EducationAdminController {
 
   @Get()
   @ApiOperation({ summary: 'List all education resources (including unpublished)' })
-  @ApiResponse({ status: 200, type: EducationResourcesListResponseDto })
-  listAll(@CurrentUser() _a: RequestUser): Promise<EducationResourcesListResponseDto> {
+  @ApiResponse({ status: 200, type: EducationResourcesAdminListResponseDto })
+  listAll(@CurrentUser() _a: RequestUser): Promise<EducationResourcesAdminListResponseDto> {
     return this.education.listAllForAdmin();
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get one education resource by id (admin)' })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiResponse({ status: 200, type: EducationResourceAdminResponseDto })
+  @ApiResponse({ status: 404, description: 'Not found' })
+  getOne(
+    @CurrentUser() _a: RequestUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<EducationResourceAdminResponseDto> {
+    return this.education.getByAdminId(id);
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create education resource' })
-  @ApiResponse({ status: 201, type: EducationResourceResponseDto })
+  @ApiResponse({ status: 201, type: EducationResourceAdminResponseDto })
   @ApiResponse({ status: 409, description: 'Duplicate slug' })
   create(
     @CurrentUser() _a: RequestUser,
     @Body() body: CreateEducationResourceBodyDto,
-  ): Promise<EducationResourceResponseDto> {
+  ): Promise<EducationResourceAdminResponseDto> {
     return this.education.createByAdmin(body);
   }
 
   @Patch(':id')
   @ApiParam({ name: 'id', format: 'uuid' })
-  @ApiResponse({ status: 200, type: EducationResourceResponseDto })
+  @ApiResponse({ status: 200, type: EducationResourceAdminResponseDto })
   @ApiResponse({ status: 404, description: 'Not found' })
   @ApiResponse({ status: 409, description: 'Slug conflict' })
   patch(
     @CurrentUser() _a: RequestUser,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() body: PatchEducationResourceBodyDto,
-  ): Promise<EducationResourceResponseDto> {
+  ): Promise<EducationResourceAdminResponseDto> {
     return this.education.patchByAdmin(id, body);
   }
 
