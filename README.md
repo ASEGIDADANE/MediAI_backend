@@ -104,7 +104,9 @@ Swagger: `http://localhost:4000/docs` (or your `PORT`).
 | `GET` | `/api/education/resources` | All **published** rows, ordered by `sortOrder` then `slug`. |
 | `GET` | `/api/education/resources/:slug` | One resource. **404** for unknown slug or unpublished. |
 
-**Admin — education (JWT + admin):** `GET /api/admin/education/resources` (all, incl. unpublished), `POST /api/admin/education/resources` (**409** on duplicate `slug`), `PATCH /api/admin/education/resources/:id`, `DELETE` (soft).
+**Admin — education (JWT + admin):** `GET /api/admin/education/resources` (all, incl. unpublished), `GET /api/admin/education/resources/:id` (UUID), `POST /api/admin/education/resources` (**409** on duplicate `slug`), `PATCH /api/admin/education/resources/:id` (body may include `sortOrder: null` to clear ordering), `DELETE` (soft).
+
+**Education — local dev & CI:** Run `npx prisma db seed` (from this package) so `education_resource` has the three default rows; otherwise MediAI public `/symptom-guide`, `/glossary`, `/knowledge-base`, and `/resources` may 404 or list empty. **DB e2e** for education lives in `test/education.e2e-spec.ts` and runs only when **`RUN_EDUCATION_E2E=1`** and `DATABASE_URL` are set (same pattern as other gated e2e). Lightweight checks without DB are in `test/cms-api.e2e-spec.ts` (`GET /api/education/resources`, invalid slug **404**). If your CI has no Postgres, keep the DB suite opt-in and rely on cms-api + manual/staging runs.
 
 **Chat (LLM) — JSON:** `POST /api/chat/personal/messages` (**JWT**), `POST /api/chat/general/messages` (optional JWT). **Multi-turn:** send `conversationId` / `sessionId` to continue. Response includes `messageId` (general includes assistant `messageId`). LLM/embedding errors map to **502/503/504** (no key material in body).
 
