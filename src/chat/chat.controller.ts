@@ -100,6 +100,7 @@ export class ChatController {
       user.id,
       q.page ?? 1,
       q.pageSize ?? 20,
+      q.patientUserId,
     );
   }
 

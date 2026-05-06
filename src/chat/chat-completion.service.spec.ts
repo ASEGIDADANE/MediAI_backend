@@ -1,6 +1,9 @@
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { ChatThreadKind } from '../generated/prisma/client';
+import {
+  ChatThreadKind,
+  OnboardingUserRole,
+} from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatCompletionService } from './chat-completion.service';
 import { ChatQuotaService } from './chat-quota.service';
@@ -80,5 +83,136 @@ describe('ChatCompletionService — general', () => {
     expect(out.messageId).toBe('am');
     expect(build).not.toHaveBeenCalled();
     expect(prisma.userProfile.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe('ChatCompletionService — clinical assistant (patientUserId)', () => {
+  function makeService(prisma: ReturnType<typeof prismaMock>, userContextBuild = jest.fn(() => 'PATIENT_BLOCK')) {
+    const userContext = { buildFromUserProfile: userContextBuild };
+    const rag = { retrieve: jest.fn(() => Promise.resolve([])) };
+    const llm = {
+      completeWithMessages: jest.fn(() =>
+        Promise.resolve({ text: 'reply', model: 'dummy' }),
+      ),
+    };
+    return Test.createTestingModule({
+      providers: [
+        ChatCompletionService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: UserContextService, useValue: userContext },
+        { provide: RagService, useValue: rag },
+        { provide: LlmService, useValue: llm },
+        {
+          provide: ConfigService,
+          useValue: { get: (_k: string, d?: string) => d },
+        },
+        { provide: ChatQuotaService, useValue: quotaMock },
+      ],
+    })
+      .compile()
+      .then((m) => ({
+        svc: m.get(ChatCompletionService),
+        userContextBuild,
+      }));
+  }
+
+  it('rejects non-professional callers asking about a patient', async () => {
+    const prisma = prismaMock();
+    (prisma.userProfile.findUnique as jest.Mock) = jest
+      .fn()
+      .mockResolvedValueOnce({ role: OnboardingUserRole.personal }); // caller is patient
+    const { svc } = await makeService(prisma);
+
+    await expect(
+      svc.sendPersonal('caller-1', {
+        message: 'about my friend',
+        patientUserId: '11111111-2222-4333-8444-555555555555',
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(quotaMock.ensureCanSend).toHaveBeenCalled();
+  });
+
+  it("feeds the patient's profile to the LLM (not the doctor's) and tags the conversation", async () => {
+    const prisma = prismaMock();
+    const patientId = '11111111-2222-4333-8444-555555555555';
+    (prisma.userProfile.findUnique as jest.Mock) = jest
+      .fn()
+      // 1st: caller role check (must be professional)
+      .mockResolvedValueOnce({ role: OnboardingUserRole.professional })
+      // 2nd: load patient profile
+      .mockResolvedValueOnce({
+        userId: patientId,
+        role: OnboardingUserRole.personal,
+        preferredName: 'Aisha',
+      });
+    (prisma.chatConversation.findFirst as jest.Mock) = jest.fn(() => null);
+    (prisma.chatConversation.create as jest.Mock) = jest.fn(() =>
+      Promise.resolve({
+        id: 'c-doc-pat',
+        kind: ChatThreadKind.personal,
+        userId: 'doc-1',
+        patientUserId: patientId,
+      }),
+    );
+    (prisma.chatMessage.findMany as jest.Mock) = jest.fn(() => [
+      { role: 'user' as const, content: 'Hi' },
+    ]);
+    (prisma.chatMessage.create as jest.Mock) = jest
+      .fn()
+      .mockResolvedValueOnce({ id: 'um' })
+      .mockResolvedValueOnce({ id: 'am' });
+
+    const build = jest.fn(() => 'PATIENT_BLOCK_AISHA');
+    const { svc } = await makeService(prisma, build);
+
+    const out = await svc.sendPersonal('doc-1', {
+      message: 'differential for headache?',
+      patientUserId: patientId,
+    });
+
+    expect(out.reply).toBe('reply');
+    expect(out.conversationId).toBe('c-doc-pat');
+    expect(build).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: patientId }),
+    );
+    expect(prisma.chatConversation.create).toHaveBeenCalledWith({
+      data: {
+        kind: ChatThreadKind.personal,
+        userId: 'doc-1',
+        patientUserId: patientId,
+      },
+    });
+  });
+
+  it('rejects switching subjects mid-conversation', async () => {
+    const prisma = prismaMock();
+    const patientId = '11111111-2222-4333-8444-555555555555';
+    const otherPatientId = '22222222-3333-4444-8555-666666666666';
+    (prisma.userProfile.findUnique as jest.Mock) = jest
+      .fn()
+      .mockResolvedValueOnce({ role: OnboardingUserRole.professional })
+      .mockResolvedValueOnce({
+        userId: patientId,
+        role: OnboardingUserRole.personal,
+      });
+    // Existing conversation belongs to a *different* patient.
+    (prisma.chatConversation.findFirst as jest.Mock) = jest.fn(() =>
+      Promise.resolve({
+        id: 'c-existing',
+        userId: 'doc-1',
+        patientUserId: otherPatientId,
+        kind: ChatThreadKind.personal,
+      }),
+    );
+
+    const { svc } = await makeService(prisma);
+
+    await expect(
+      svc.sendPersonal('doc-1', {
+        message: 'note',
+        conversationId: 'c-existing',
+        patientUserId: patientId,
+      }),
+    ).rejects.toMatchObject({ status: 400 });
   });
 });
