@@ -50,7 +50,13 @@ model User {
   supportReports    SupportReport[]
   accountAuditLogs  AccountAuditLog[]
 
-  chatConversations ChatConversation[]
+  /// `ChatConversation`s the user *owns* (asks the AI; for personal-mode chats this is
+  /// the caller — for the professional clinical assistant it's the doctor).
+  chatConversations         ChatConversation[] @relation("ChatOwner")
+  /// `ChatConversation`s where the user is the *subject* (the patient a doctor is
+  /// asking the clinical assistant about). Always null for the patient's own personal
+  /// chats.
+  patientChatConversations  ChatConversation[] @relation("ChatPatient")
 
   doctorThreads     DoctorPatientThread[]  @relation("DoctorThreads")
   patientThreads    DoctorPatientThread[]  @relation("PatientThreads")
@@ -150,12 +156,22 @@ enum ChatMessageRole {
 }
 
 /// One chat thread. Personal: `userId` set; general: `userId` may be null (anonymous).
+///
+/// `patientUserId` is the *subject* of a clinical-assistant conversation — set only
+/// when a professional caller is asking the assistant about one of their patients.
+/// For ordinary patient-side personal chats it's null. The pair `(userId,
+/// patientUserId, kind)` together identifies a doctor↔patient context, so the LLM
+/// is fed the patient's profile (not the doctor's) for those rows.
 model ChatConversation {
   id   String         @id @default(uuid())
   kind ChatThreadKind
-  /// Null for authentic personal path or anonymous general; optional for logged-in general (rate limit).
+  /// Null for anonymous general; otherwise the *caller* who owns the thread.
   userId            String?
-  user              User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User?   @relation("ChatOwner", fields: [userId], references: [id], onDelete: Cascade)
+  /// When the caller is a doctor and the conversation is *about* a patient,
+  /// this is that patient's userId. Null in every other case.
+  patientUserId     String?
+  patient           User?   @relation("ChatPatient", fields: [patientUserId], references: [id], onDelete: Cascade)
   /// Correlates unauthenticated general turns (not PHI).
   clientSessionId   String?
   /// Last activity for simple ordering.
@@ -165,6 +181,7 @@ model ChatConversation {
   messages ChatMessage[]
 
   @@index([userId, kind])
+  @@index([userId, patientUserId, kind])
   @@index([clientSessionId, kind])
 }
 
@@ -378,4 +395,37 @@ model DoctorPatientMessage {
 
   @@index([threadId, createdAt])
   @@map("doctor_patient_message")
+}
+
+/// Admin-managed pricing tier ("Free", "Lite", "Pro", …). Surfaces on the public
+/// pricing page and on `/admin/subscriptions`. Prices are stored in minor units
+/// (cents) to avoid floating-point drift; the API returns both the integer and
+/// a pre-formatted display string ("$3.99").
+///
+/// `SubscriptionPlan` is intentionally standalone: until a payment provider is
+/// integrated there is no per-user link. Subscriber counts on the admin page
+/// are computed lazily server-side (currently always 0 for paid tiers and the
+/// live user count for the lone "free" tier when present).
+model SubscriptionPlan {
+  id                String   @id @default(uuid())
+  /// Display name (must be unique — used as the tier identifier in copy).
+  name              String   @unique
+  description       String?  @db.VarChar(500)
+  monthlyPriceCents Int      @default(0) @map("monthly_price_cents")
+  yearlyPriceCents  Int      @default(0) @map("yearly_price_cents")
+  /// ISO-4217 3-letter currency code (defaults to USD).
+  currency          String   @default("USD") @db.VarChar(3)
+  /// JSON `string[]` of feature bullet points (free-form copy).
+  features          Json     @default("[]")
+  /// When false, the plan is hidden from the public pricing page. Admins still
+  /// see it on `/admin/subscriptions` so they can re-enable or delete it.
+  active            Boolean  @default(true)
+  /// Public ordering on the pricing page (lower = leftmost). Admin list shows
+  /// the same order.
+  sortOrder         Int      @default(0) @map("sort_order")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@index([active, sortOrder])
+  @@map("subscription_plan")
 }

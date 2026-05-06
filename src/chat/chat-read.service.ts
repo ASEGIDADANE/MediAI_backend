@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ChatMessageRole, ChatThreadKind } from '../generated/prisma/client';
+import { ChatMessageRole, ChatThreadKind, Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 const PREVIEW_MAX = 200;
@@ -10,6 +10,11 @@ export type ConversationListItem = {
   createdAt: string;
   updatedAt: string;
   lastMessagePreview?: string;
+  /**
+   * When set, this conversation was opened by a doctor *about* the named
+   * patient (clinical assistant). Null/undefined for the caller's own chats.
+   */
+  patientUserId?: string | null;
 };
 
 @Injectable()
@@ -18,11 +23,16 @@ export class ChatReadService {
 
   /**
    * Personal threads only: `userId` must be JWT `sub` (enforced at controller).
+   *
+   * `patientUserId` filters the listing to clinical-assistant conversations
+   * about that one patient. Pass `undefined` to list every personal thread the
+   * caller owns regardless of subject.
    */
   async listPersonalConversations(
     userId: string,
     page: number,
     pageSize: number,
+    patientUserId?: string,
   ): Promise<{
     items: ConversationListItem[];
     page: number;
@@ -31,7 +41,11 @@ export class ChatReadService {
   }> {
     const take = Math.min(100, Math.max(1, pageSize));
     const skip = Math.max(0, (Math.max(1, page) - 1) * take);
-    const where = { userId, kind: ChatThreadKind.personal };
+    const where: Prisma.ChatConversationWhereInput = {
+      userId,
+      kind: ChatThreadKind.personal,
+      ...(patientUserId ? { patientUserId } : {}),
+    };
     const [total, rows] = await this.prisma.$transaction([
       this.prisma.chatConversation.count({ where }),
       this.prisma.chatConversation.findMany({
@@ -57,6 +71,7 @@ export class ChatReadService {
         kind: r.kind,
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
+        patientUserId: r.patientUserId ?? null,
         lastMessagePreview: (() => {
           const c = r.messages[0]?.content;
           if (!c) {

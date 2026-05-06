@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   HttpException,
   Injectable,
   Logger,
@@ -10,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import {
   ChatMessageRole,
   ChatThreadKind,
+  OnboardingUserRole,
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -50,7 +52,11 @@ export class ChatCompletionService {
 
   async sendPersonal(
     userId: string,
-    input: { message: string; conversationId?: string },
+    input: {
+      message: string;
+      conversationId?: string;
+      patientUserId?: string;
+    },
   ): Promise<{
     reply: string;
     conversationId: string;
@@ -62,7 +68,11 @@ export class ChatCompletionService {
 
   async runPersonalStream(
     userId: string,
-    input: { message: string; conversationId?: string },
+    input: {
+      message: string;
+      conversationId?: string;
+      patientUserId?: string;
+    },
     onToken: (chunk: string) => void,
   ): Promise<{
     reply: string;
@@ -75,7 +85,11 @@ export class ChatCompletionService {
 
   private async runPersonalJson(
     userId: string,
-    input: { message: string; conversationId?: string },
+    input: {
+      message: string;
+      conversationId?: string;
+      patientUserId?: string;
+    },
     onToken?: (chunk: string) => void,
   ): Promise<{
     reply: string;
@@ -88,22 +102,22 @@ export class ChatCompletionService {
     const message = this.requireMessage(input.message);
     this.quota.ensureCanSend(userId, 'personal');
 
-    const profile = await this.prisma.userProfile.findUnique({
-      where: { userId },
-    });
-    if (!profile) {
-      throw new NotFoundException(
-        'Complete onboarding to use personalized chat.',
-      );
-    }
+    // Subject of the chat: by default the caller themselves, but a professional
+    // can ask the assistant about one of their patients via `patientUserId`.
+    const subject = await this.resolveSubject(userId, input.patientUserId);
 
-    const userBlock = this.userContext.buildFromUserProfile(profile);
+    const userBlock = this.userContext.buildFromUserProfile(subject.profile);
     const citations = await this.rag.retrieve(message, 'personal');
-    const system = this.assembleSystemPersonal(userBlock, citations);
+    const system = this.assembleSystemPersonal(
+      userBlock,
+      citations,
+      subject.kind === 'patient',
+    );
 
     const conversation = await this.resolveOrCreatePersonalConversation(
       userId,
       input.conversationId,
+      subject.kind === 'patient' ? subject.profile.userId : undefined,
     );
 
     try {
@@ -334,10 +348,13 @@ export class ChatCompletionService {
   private assembleSystemPersonal(
     userBlock: string,
     citations: Citation[],
+    aboutPatient = false,
   ): string {
     const parts = [
       CHAT_SAFETY_AND_STYLE,
-      CHAT_PERSONAL_EXTRA,
+      aboutPatient
+        ? `${CHAT_PERSONAL_EXTRA}\n\nThe caller is a healthcare professional asking about their patient. Treat the user-context block below as the *patient's* record (not the caller's). Provide clinical decision support, not direct-to-consumer advice. Be concise and clinically focused.`
+        : CHAT_PERSONAL_EXTRA,
       userBlock,
     ];
     if (citations.length) {
@@ -363,6 +380,7 @@ export class ChatCompletionService {
   private async resolveOrCreatePersonalConversation(
     userId: string,
     conversationId?: string,
+    patientUserId?: string,
   ) {
     if (conversationId) {
       const c = await this.prisma.chatConversation.findFirst({
@@ -375,14 +393,87 @@ export class ChatCompletionService {
       if (!c) {
         throw new NotFoundException('Conversation not found');
       }
+      // Switching subjects mid-thread would silently leak the wrong patient's
+      // context; reject so the client must start a new thread per patient.
+      if ((c.patientUserId ?? null) !== (patientUserId ?? null)) {
+        throw new BadRequestException(
+          'patientUserId does not match the existing conversation',
+        );
+      }
       return c;
     }
     return this.prisma.chatConversation.create({
       data: {
         kind: ChatThreadKind.personal,
         userId,
+        patientUserId: patientUserId ?? null,
       },
     });
+  }
+
+  /**
+   * For a personal chat, resolve whose UserProfile to feed the LLM.
+   *
+   * - Self chat (`patientUserId` omitted): caller's own profile.
+   *   Throws 404 if the caller hasn't completed onboarding.
+   * - Doctor about patient (`patientUserId` set): caller must be a
+   *   professional, the patient must exist with a personal profile, and the
+   *   doctor cannot point at themselves.
+   */
+  private async resolveSubject(
+    callerUserId: string,
+    patientUserId: string | undefined,
+  ): Promise<
+    | { kind: 'self'; profile: import('../generated/prisma/client').UserProfile }
+    | {
+        kind: 'patient';
+        profile: import('../generated/prisma/client').UserProfile;
+      }
+  > {
+    if (!patientUserId) {
+      const profile = await this.prisma.userProfile.findUnique({
+        where: { userId: callerUserId },
+      });
+      if (!profile) {
+        throw new NotFoundException(
+          'Complete onboarding to use personalized chat.',
+        );
+      }
+      return { kind: 'self', profile };
+    }
+
+    if (patientUserId === callerUserId) {
+      throw new BadRequestException(
+        'patientUserId cannot equal the caller (use self-chat instead).',
+      );
+    }
+
+    // Caller must be a professional to ask the assistant about another user.
+    const callerProfile = await this.prisma.userProfile.findUnique({
+      where: { userId: callerUserId },
+      select: { role: true },
+    });
+    if (
+      !callerProfile ||
+      callerProfile.role !== OnboardingUserRole.professional
+    ) {
+      throw new ForbiddenException(
+        'Only professional users can ask the assistant about a patient.',
+      );
+    }
+
+    // Patient must exist with a personal profile.
+    const patientProfile = await this.prisma.userProfile.findUnique({
+      where: { userId: patientUserId },
+    });
+    if (
+      !patientProfile ||
+      patientProfile.role !== OnboardingUserRole.personal
+    ) {
+      throw new NotFoundException('Patient not found.');
+    }
+
+    return { kind: 'patient', profile: patientProfile };
   }
 
   private async resolveOrCreateGeneralConversation(

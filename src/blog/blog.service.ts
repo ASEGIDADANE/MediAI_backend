@@ -163,7 +163,7 @@ export class BlogService {
       category: d.category,
       author: d.author,
       readTime: d.readTime,
-      imageSrc: d.imageSrc,
+      imageSrc: d.imageSrc?.trim() ?? '',
       intro: d.intro,
       sections: JSON.parse(JSON.stringify(d.sections)) as Prisma.InputJsonValue,
       publishedAt: new Date(d.publishedAt),
@@ -191,7 +191,7 @@ export class BlogService {
     if (dto.category !== undefined) data.category = dto.category;
     if (dto.author !== undefined) data.author = dto.author;
     if (dto.readTime !== undefined) data.readTime = dto.readTime;
-    if (dto.imageSrc !== undefined) data.imageSrc = dto.imageSrc;
+    if (dto.imageSrc !== undefined) data.imageSrc = dto.imageSrc.trim();
     if (dto.intro !== undefined) data.intro = dto.intro;
     if (dto.sections !== undefined) {
       data.sections = JSON.parse(

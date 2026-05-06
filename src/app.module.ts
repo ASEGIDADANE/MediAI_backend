@@ -19,6 +19,7 @@ import { EducationModule } from './education/education.module';
 import { HealthFacilitiesModule } from './health-facilities/health-facilities.module';
 import { ProfessionalModule } from './professional/professional.module';
 import { MessagesModule } from './messages/messages.module';
+import { SubscriptionPlansModule } from './subscription-plans/subscription-plans.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { MessagesModule } from './messages/messages.module';
     HealthFacilitiesModule,
     ProfessionalModule,
     MessagesModule,
+    SubscriptionPlansModule,
   ],
   controllers: [AppController],
   providers: [

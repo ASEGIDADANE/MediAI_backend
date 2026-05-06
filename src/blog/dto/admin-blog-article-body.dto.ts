@@ -34,10 +34,14 @@ export class CreateBlogArticleBodyDto {
   @MinLength(1)
   readTime!: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional({
+    description:
+      'Cover image URL. May be a relative `/path.png` from `public/`, an absolute https URL, or an empty string for no image.',
+    default: '',
+  })
+  @IsOptional()
   @IsString()
-  @MinLength(1)
-  imageSrc!: string;
+  imageSrc?: string;
 
   @ApiProperty()
   @IsString()
