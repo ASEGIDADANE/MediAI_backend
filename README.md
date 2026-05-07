@@ -27,6 +27,16 @@ MediAI backend: NestJS + Prisma + PostgreSQL, JWT auth, onboarding, and **public
 
 **Chat (RAG + multi-turn + streaming):** see `docs/CHAT_IMPLEMENTATION_SPEC.md` and table below. **Backend finalization (gaps):** `docs/CHAT_MODULE_FINALIZATION_BACKEND.md`. **Production-hardening prompt (senior backend, same scope):** `docs/CHAT_PRODUCTION_READINESS_PROMPT.md`. **Next.js / MediAI app — API contract for chat (no app code in this repo):** `docs/CHAT_FRONTEND_HANDOFF.md`.
 
+### Deploy / database migrations
+
+After `DATABASE_URL` is set for an environment (local, staging, production), apply the schema **once per deploy** (or on first boot of a new database):
+
+```bash
+npx prisma migrate deploy
+```
+
+This creates all tables Prisma manages (including doctor–patient messaging: `doctor_patient_thread`, `doctor_patient_message`). Skipping migrations causes runtime errors such as Prisma **P2021** (relation does not exist). Regenerate the client after schema changes: `npx prisma generate` (often run automatically via `postinstall` / `prebuild`).
+
 ### Environment
 
 | Variable | Default | Notes |

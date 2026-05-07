@@ -4,128 +4,23 @@
 import 'dotenv/config';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as bcrypt from 'bcrypt';
 import { PrismaPg } from '@prisma/adapter-pg';
+import * as bcrypt from 'bcrypt';
 import { Pool } from 'pg';
 import {
   Prisma,
   PrismaClient,
   UserAppRole,
+  UserAppRole,
   type HealthcareFacilityType,
 } from '../src/generated/prisma/client';
 
-// Prisma 7's `prisma-client` generator requires a driver adapter (the legacy
-// `datasources.db.url` shape was removed). Mirror what `PrismaService` does so
-// the seed connects to the same Postgres as the running app.
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error(
-    'DATABASE_URL is not set; create a .env at MedaiBackend/MediAI_backend/.env (see .env.example).',
-  );
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('DATABASE_URL is required for prisma seed');
 }
-const pool = new Pool({ connectionString: databaseUrl });
+const pool = new Pool({ connectionString });
 const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
-const BCRYPT_ROUNDS = 12;
-
-type AdminSpec = { email: string; password: string };
-
-/**
- * Collects every admin pair declared in the environment. Two patterns are
- * supported and freely mixed:
- *
- *   1. Unnumbered (back-compat): SEED_ADMIN_EMAIL + SEED_ADMIN_PASSWORD
- *   2. Numbered (any count):     SEED_ADMIN_1_EMAIL + SEED_ADMIN_1_PASSWORD,
- *                                SEED_ADMIN_2_EMAIL + SEED_ADMIN_2_PASSWORD,
- *                                ... (gaps are allowed; we scan up to 50)
- *
- * Result: an array of {email, password} pairs ready to upsert. Duplicate
- * emails (case-insensitive) keep only the first occurrence.
- */
-function collectAdminSpecs(): AdminSpec[] {
-  const specs: AdminSpec[] = [];
-  const seen = new Set<string>();
-
-  const push = (rawEmail: string | undefined, password: string | undefined) => {
-    const email = rawEmail?.trim().toLowerCase();
-    if (!email || !password) return;
-    if (seen.has(email)) return;
-    seen.add(email);
-    specs.push({ email, password });
-  };
-
-  push(process.env.SEED_ADMIN_EMAIL, process.env.SEED_ADMIN_PASSWORD);
-
-  for (let i = 1; i <= 50; i += 1) {
-    push(
-      process.env[`SEED_ADMIN_${i}_EMAIL`],
-      process.env[`SEED_ADMIN_${i}_PASSWORD`],
-    );
-  }
-  return specs;
-}
-
-/**
- * Upserts a single admin row. Idempotent:
- *   - missing user -> create with appRole=admin and a bcrypt-hashed password,
- *   - existing non-admin -> promote to admin,
- *   - existing admin -> no-op (password is rewritten only when
- *     SEED_ADMIN_RESET_PASSWORD=true so re-running the seed never silently
- *     clobbers a password the user later changed via /forgot-password).
- */
-async function upsertAdmin({ email, password }: AdminSpec, resetPassword: boolean) {
-  if (password.length < 8) {
-    throw new Error(
-      `Password for admin ${email} must be at least 8 characters.`,
-    );
-  }
-  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (!existing) {
-    await prisma.user.create({
-      data: { email, passwordHash, appRole: UserAppRole.admin },
-    });
-    console.log(`Seeded admin user ${email}.`);
-    return;
-  }
-
-  const updates: Prisma.UserUpdateInput = {};
-  if (existing.appRole !== UserAppRole.admin) updates.appRole = UserAppRole.admin;
-  if (resetPassword) updates.passwordHash = passwordHash;
-
-  if (Object.keys(updates).length === 0) {
-    console.log(`Admin user ${email} already present; nothing to update.`);
-    return;
-  }
-
-  await prisma.user.update({ where: { email }, data: updates });
-  console.log(
-    `Updated existing user ${email} -> appRole=admin${
-      resetPassword ? ' (password reset from env)' : ''
-    }.`,
-  );
-}
-
-/**
- * Idempotent admin bootstrap. Reads any number of admin pairs from the
- * environment (see {@link collectAdminSpecs}) and creates / promotes each one.
- *
- * No-ops (with a friendly log) when no admin pair is configured so that
- * contributors who don't want a local admin can still run the seed.
- */
-async function seedAdmin() {
-  const specs = collectAdminSpecs();
-  if (specs.length === 0) {
-    console.log(
-      'Admin seed skipped: set SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD (and/or SEED_ADMIN_<N>_EMAIL/SEED_ADMIN_<N>_PASSWORD pairs) in .env to bootstrap admin users.',
-    );
-    return;
-  }
-  const resetPassword = process.env.SEED_ADMIN_RESET_PASSWORD === 'true';
-  for (const spec of specs) {
-    await upsertAdmin(spec, resetPassword);
-  }
-}
 
 type SeedArticle = {
   id: string;
@@ -167,25 +62,25 @@ async function seedTopDoctor() {
         'Lymphoma',
         'Myeloma',
         'Leukemia',
-      ] as Prisma.JsonValue,
+      ] as Prisma.InputJsonValue,
       biography: [
         "Dr. Ashenafi is an experienced medical professional with a specialization in tumors of the upper respiratory tract, skin tumors, modern immunotherapies, and hematology. Broad cancer and rare tumors complete his knowledge.",
         'Currently, Dr. Ashenafi is the Chief Physician at the Swiss Cancer Services AG/Seeland Cancer Center in Hirslanden Klinik Linde, Biel, Switzerland. Previously, he worked as the Head of the Interdisciplinary Cancerology Service at Riviera-Chablais Hospital, where he served from 2019 to 2020.',
         "Dr. Ashenafi has held various leadership positions in his career. From 2009 to 2018, he was the Disease Leader for Head and Neck Cancer and Thyroid Cancer. Additionally, he was the Disease Leader for Skin Cancers and Melanoma from 2012 to 2018.",
         "Dr. Ashenafi is a member of numerous national and international scientific societies and associations. He is a founding member and board member of the Swiss Head and Neck Society and the President of the Head and Neck Cancer Working Group.",
-      ] as Prisma.JsonValue,
+      ] as Prisma.InputJsonValue,
       experience: [
         {
           title: 'Head of the Interdisciplinary Cancerology Service, Riviera-Chablais Hospital',
           subtitle: 'Rennaz, Switzerland. 2019 - 2020',
         },
-      ] as Prisma.JsonValue,
+      ] as Prisma.InputJsonValue,
       affiliations: [
         {
           title: 'President of the Head and Neck Cancer Working Group',
           subtitle: 'Since 2016',
         },
-      ] as Prisma.JsonValue,
+      ] as Prisma.InputJsonValue,
       publicationsSummary: 'Dr. Ashenafi has more than 40 publications',
       published: true,
       sortOrder: 0,
@@ -217,7 +112,7 @@ async function seedBlog() {
         readTime: a.readTime,
         imageSrc: a.imageSrc,
         intro: a.intro,
-        sections: a.sections as Prisma.JsonValue,
+        sections: a.sections as Prisma.InputJsonValue,
         published: true,
         publishedAt,
         dateDisplay: a.date,
@@ -314,7 +209,7 @@ async function seedEducation() {
         slug: p.slug,
         title: p.title,
         description: p.description,
-        bullets: p.bullets as Prisma.JsonValue,
+        bullets: p.bullets as Prisma.InputJsonValue,
         iconKey: p.slug,
         published: true,
         sortOrder: p.sortOrder,
@@ -368,96 +263,38 @@ async function seedHealthFacilities() {
   console.log(`Seeded ${raw.length} healthcare facilities (facility locator).`);
 }
 
-type SubscriptionPlanSeed = {
-  name: string;
-  description: string;
-  monthlyPriceCents: number;
-  yearlyPriceCents: number;
-  currency: string;
-  features: string[];
-  active: boolean;
-  sortOrder: number;
-};
+const BCRYPT_ROUNDS = 12;
 
-async function seedSubscriptionPlans() {
-  const plans: SubscriptionPlanSeed[] = [
-    {
-      name: 'Free',
-      description:
-        'Get started with essential AI-Doctor access for everyday wellness questions.',
-      monthlyPriceCents: 0,
-      yearlyPriceCents: 0,
-      currency: 'USD',
-      features: [
-        'AI Doctor — general mode',
-        'Symptom guide & glossary',
-        'Find nearby healthcare facilities',
-      ],
-      active: true,
-      sortOrder: 0,
-    },
-    {
-      name: 'Lite',
-      description:
-        'Personalised AI-Doctor with your health profile and medical history saved.',
-      monthlyPriceCents: 399,
-      yearlyPriceCents: 4_788,
-      currency: 'USD',
-      features: [
-        'Everything in Free',
-        'Personal AI Doctor with full health profile',
-        'Conversation history across devices',
-        'Lab test interpretation drafts',
-      ],
-      active: true,
-      sortOrder: 10,
-    },
-    {
-      name: 'Pro',
-      description:
-        'Advanced clinical guidance plus messaging with verified MediAI doctors.',
-      monthlyPriceCents: 799,
-      yearlyPriceCents: 9_588,
-      currency: 'USD',
-      features: [
-        'Everything in Lite',
-        'Direct messaging with verified doctors',
-        'Priority response on second-opinion requests',
-        'Unlimited AI conversation history',
-      ],
-      active: true,
-      sortOrder: 20,
-    },
-  ];
+/** Email/password admin for local sign-in (not created when SEED_DEV_ADMIN=false). */
+async function seedDevAdmin() {
+  const skip =
+    process.env.SEED_DEV_ADMIN === '0' ||
+    process.env.SEED_DEV_ADMIN === 'false';
+  if (skip) {
+    console.log('Dev admin seed skipped (SEED_DEV_ADMIN=false).');
+    return;
+  }
 
-  // Idempotent: only insert plans whose `name` doesn't already exist. We
-  // never overwrite an admin-edited plan once it's in the DB — re-running the
-  // seed should never silently revert a price change.
-  let created = 0;
-  for (const p of plans) {
-    const existing = await prisma.subscriptionPlan.findUnique({
-      where: { name: p.name },
-    });
-    if (existing) continue;
-    await prisma.subscriptionPlan.create({
-      data: {
-        name: p.name,
-        description: p.description,
-        monthlyPriceCents: p.monthlyPriceCents,
-        yearlyPriceCents: p.yearlyPriceCents,
-        currency: p.currency,
-        features: p.features as Prisma.InputJsonValue,
-        active: p.active,
-        sortOrder: p.sortOrder,
-      },
-    });
-    created += 1;
+  const email = (process.env.DEV_ADMIN_EMAIL ?? 'admin@mediai.dev')
+    .trim()
+    .toLowerCase();
+  const password = process.env.DEV_ADMIN_PASSWORD ?? 'ChangeMeDev1!';
+  if (password.length < 8) {
+    console.warn(
+      'DEV_ADMIN_PASSWORD must be at least 8 characters; skipping dev admin seed.',
+    );
+    return;
   }
-  if (created > 0) {
-    console.log(`Seeded ${created} subscription plan(s).`);
-  } else {
-    console.log('Subscription plans already present; skip.');
-  }
+
+  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  await prisma.user.upsert({
+    where: { email },
+    create: { email, passwordHash, appRole: UserAppRole.admin },
+    update: { passwordHash, appRole: UserAppRole.admin },
+  });
+  console.log(
+    `Dev admin user: ${email} / (password from DEV_ADMIN_PASSWORD or default ChangeMeDev1!)`,
+  );
 }
 
 export async function main() {
@@ -466,7 +303,7 @@ export async function main() {
   await seedBlog();
   await seedEducation();
   await seedHealthFacilities();
-  await seedSubscriptionPlans();
+  await seedDevAdmin();
 }
 
 main()
@@ -476,5 +313,6 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect();
+    await pool.end();
     await pool.end();
   });

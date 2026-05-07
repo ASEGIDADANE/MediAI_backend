@@ -43,13 +43,13 @@ describe('userProfileToDashboardProfile', () => {
     expect(p.age).toBe('48');
   });
 
-  it('coerces legacy lab_interpretation DB records to ai-doctor for the frontend', () => {
+  it('maps lab_interpretation to lab-test-interpretation for the frontend', () => {
     const p = userProfileToDashboardProfile(
       baseUserProfile({
         preferredFeature: OnboardingPreferredFeature.lab_interpretation,
       }),
     );
-    expect(p.preferredFeature).toBe('ai-doctor');
+    expect(p.preferredFeature).toBe('lab-test-interpretation');
   });
 
   it('omits professionalProfile when null in DB', () => {
