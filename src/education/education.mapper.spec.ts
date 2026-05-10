@@ -1,5 +1,8 @@
 import type { EducationResource } from '../generated/prisma/client';
-import { toEducationResourceAdminDto, toEducationResourceDto } from './education.mapper';
+import {
+  toEducationResourceAdminDto,
+  toEducationResourceDto,
+} from './education.mapper';
 
 describe('toEducationResourceDto', () => {
   it('maps entity and coerces bullets', () => {

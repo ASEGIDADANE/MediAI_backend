@@ -121,16 +121,9 @@ export class ChatCompletionService {
     );
 
     try {
-      await this.saveMessage(
-        conversation.id,
-        ChatMessageRole.user,
-        message,
-      );
+      await this.saveMessage(conversation.id, ChatMessageRole.user, message);
 
-      const llmMessages = await this.loadLlmMessages(
-        system,
-        conversation.id,
-      );
+      const llmMessages = await this.loadLlmMessages(system, conversation.id);
 
       let text: string;
       let modelLabel = 'stream';
@@ -239,16 +232,9 @@ export class ChatCompletionService {
     );
 
     try {
-      await this.saveMessage(
-        conversation.id,
-        ChatMessageRole.user,
-        message,
-      );
+      await this.saveMessage(conversation.id, ChatMessageRole.user, message);
 
-      const llmMessages = await this.loadLlmMessages(
-        system,
-        conversation.id,
-      );
+      const llmMessages = await this.loadLlmMessages(system, conversation.id);
 
       let text: string;
       let modelLabel = 'stream';
@@ -336,7 +322,9 @@ export class ChatCompletionService {
 
   private requireMessage(s: string): string {
     if (s.length > 8_000) {
-      throw new BadRequestException('message exceeds max length (8000 characters)');
+      throw new BadRequestException(
+        'message exceeds max length (8000 characters)',
+      );
     }
     const t = s.trim().replace(/\0/g, '');
     if (!t) {
@@ -424,7 +412,10 @@ export class ChatCompletionService {
     callerUserId: string,
     patientUserId: string | undefined,
   ): Promise<
-    | { kind: 'self'; profile: import('../generated/prisma/client').UserProfile }
+    | {
+        kind: 'self';
+        profile: import('../generated/prisma/client').UserProfile;
+      }
     | {
         kind: 'patient';
         profile: import('../generated/prisma/client').UserProfile;

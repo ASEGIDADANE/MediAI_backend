@@ -1,6 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 const MAX_PAGE_SIZE = 50;
 const Q_MAX = 120;
@@ -21,7 +29,9 @@ export class BlogArticlesQueryDto {
   @Max(MAX_PAGE_SIZE)
   pageSize?: number;
 
-  @ApiPropertyOptional({ description: 'Filter by category (case-insensitive equality)' })
+  @ApiPropertyOptional({
+    description: 'Filter by category (case-insensitive equality)',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(120)

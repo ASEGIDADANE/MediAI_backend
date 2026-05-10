@@ -309,7 +309,10 @@ export class ProfessionalService {
     return user;
   }
 
-  private async findOrCreateThread(doctorUserId: string, patientUserId: string) {
+  private async findOrCreateThread(
+    doctorUserId: string,
+    patientUserId: string,
+  ) {
     const existing = await this.prisma.doctorPatientThread.findUnique({
       where: {
         doctorUserId_patientUserId: {

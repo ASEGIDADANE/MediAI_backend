@@ -15,7 +15,10 @@ export class ChatQuotaService {
     this.cap = Number(config.get('CHAT_DAILY_CAP', '0') || 0);
   }
 
-  ensureCanSend(userId: string | undefined, route: 'personal' | 'general'): void {
+  ensureCanSend(
+    userId: string | undefined,
+    route: 'personal' | 'general',
+  ): void {
     void route;
     if (this.cap <= 0 || !userId) {
       return;
@@ -32,7 +35,10 @@ export class ChatQuotaService {
     }
   }
 
-  recordCompletedTurn(userId: string | undefined, route: 'personal' | 'general'): void {
+  recordCompletedTurn(
+    userId: string | undefined,
+    route: 'personal' | 'general',
+  ): void {
     void route;
     if (this.cap <= 0 || !userId) {
       return;
@@ -46,7 +52,10 @@ export class ChatQuotaService {
     return this.getOrNew(userId, new Date().toISOString().slice(0, 10)).count;
   }
 
-  private getOrNew(userId: string, day: string): { day: string; count: number } {
+  private getOrNew(
+    userId: string,
+    day: string,
+  ): { day: string; count: number } {
     let r = this.byUser.get(userId);
     if (!r || r.day !== day) {
       r = { day, count: 0 };

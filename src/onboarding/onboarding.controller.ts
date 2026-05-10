@@ -1,4 +1,12 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
 import {
@@ -7,7 +15,10 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { CurrentUser, type RequestUser } from '../auth/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type RequestUser,
+} from '../auth/decorators/current-user.decorator';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { OnboardingConfigResponseDto } from './dto/onboarding-config-response.dto';
 import { OnboardingStatusDto } from './dto/onboarding-profile-response.dto';
@@ -53,7 +64,10 @@ export class OnboardingController {
       'Requires JWT. First call sets `role` (immutable afterwards). Re-submissions may refresh health fields but cannot change role.',
   })
   @ApiResponse({ status: 200, type: OnboardingStatusDto })
-  @ApiResponse({ status: 403, description: 'Attempt to change role after it was set' })
+  @ApiResponse({
+    status: 403,
+    description: 'Attempt to change role after it was set',
+  })
   complete(
     @CurrentUser() user: RequestUser,
     @Body() dto: CompleteOnboardingDto,

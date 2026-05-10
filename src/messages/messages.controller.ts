@@ -31,14 +31,19 @@ import {
   ThreadDetailDto,
   ThreadListDto,
   ThreadMessageDto,
+  UnreadCountDto,
 } from './dto/thread-message.dto';
 import { MessagesService } from './messages.service';
 
 /**
- * Patient half of the doctor↔patient chat. Symmetric with
- * `/professional/patients/:patientId/messages` on the doctor side, but routed
- * by `threadId` because the patient discovers doctors through threads
- * (initiated by the doctor) rather than the reverse.
+ * Caller-side messaging surface. The list and unread-count endpoints work for
+ * both patients and doctors — the caller's `UserProfile.role` decides which
+ * side of every thread they're on, so the same `/me/messages/*` URLs power
+ * both inboxes and the navbar badge for everyone.
+ *
+ * Per-thread chat operations (`/me/messages/threads/:id`) remain
+ * patient-only; doctors continue to use
+ * `/professional/patients/:patientId/messages` for the chat itself.
  */
 @ApiTags('me-messages')
 @ApiBearerAuth('access-token')
@@ -50,9 +55,9 @@ export class MessagesController {
   @Get('threads')
   @ApiOperation({
     summary:
-      'List the calling patient’s message threads with doctors (most recent activity first)',
+      'List the calling user’s message threads (most recent activity first)',
     description:
-      'Each item includes the doctor’s name, last message preview, and unread count of doctor → patient messages.',
+      'Role-aware: patients see threads with their doctors, doctors see threads with their patients. Empty threads with no messages yet are excluded. Each item includes the counterpart’s display name, last message preview, and the unread count from the caller’s perspective.',
   })
   @ApiResponse({ status: 200, type: ThreadListDto })
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
@@ -60,15 +65,31 @@ export class MessagesController {
     return this.svc.listThreads(user.id);
   }
 
+  @Get('unread-count')
+  @ApiOperation({
+    summary: 'Total unread inbound messages for the caller across every thread',
+    description:
+      'Powers the dashboard navbar message-icon badge. Role-aware in the same way as `GET /me/messages/threads`.',
+  })
+  @ApiResponse({ status: 200, type: UnreadCountDto })
+  @Throttle({ default: { limit: 240, ttl: 60_000 } })
+  getUnreadCount(@CurrentUser() user: RequestUser): Promise<UnreadCountDto> {
+    return this.svc.getUnreadCount(user.id);
+  }
+
   @Get('threads/:threadId')
   @ApiOperation({
-    summary: 'Fetch one doctor↔patient thread the calling patient participates in',
+    summary:
+      'Fetch one doctor↔patient thread the calling patient participates in',
     description:
       'Inbound (doctor → patient) messages are marked as read as a side-effect.',
   })
   @ApiParam({ name: 'threadId', description: 'DoctorPatientThread.id (UUID)' })
   @ApiResponse({ status: 200, type: ThreadDetailDto })
-  @ApiResponse({ status: 403, description: 'Caller is not a participant in this thread' })
+  @ApiResponse({
+    status: 403,
+    description: 'Caller is not a participant in this thread',
+  })
   @ApiResponse({ status: 404, description: 'Thread not found' })
   @Throttle({ default: { limit: 240, ttl: 60_000 } })
   getThread(
@@ -89,7 +110,10 @@ export class MessagesController {
   @ApiParam({ name: 'threadId', description: 'DoctorPatientThread.id (UUID)' })
   @ApiResponse({ status: 201, type: ThreadMessageDto })
   @ApiResponse({ status: 400, description: 'Empty or oversized body' })
-  @ApiResponse({ status: 403, description: 'Caller is not a participant in this thread' })
+  @ApiResponse({
+    status: 403,
+    description: 'Caller is not a participant in this thread',
+  })
   @ApiResponse({ status: 404, description: 'Thread not found' })
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   sendMessage(

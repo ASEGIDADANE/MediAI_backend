@@ -61,7 +61,9 @@ export function toBlogArticleDto(row: BlogArticle): BlogArticleResponseDto {
   };
 }
 
-export function toBlogArticleAdminDto(row: BlogArticle): BlogArticleAdminResponseDto {
+export function toBlogArticleAdminDto(
+  row: BlogArticle,
+): BlogArticleAdminResponseDto {
   return {
     ...toBlogArticleDto(row),
     published: row.published,

@@ -1,5 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+class DoctorVerificationSnapshotDto {
+  @ApiProperty({ enum: ['pending', 'verified', 'rejected'] })
+  status: 'pending' | 'verified' | 'rejected';
+
+  @ApiProperty({ nullable: true, description: 'ISO 8601' })
+  submittedAt: string | null;
+
+  @ApiProperty({ nullable: true, description: 'ISO 8601' })
+  reviewedAt: string | null;
+
+  @ApiProperty({ nullable: true })
+  notes: string | null;
+}
+
 class DashboardProfileViewDto {
   @ApiProperty()
   preferredName: string;
@@ -33,6 +47,13 @@ class DashboardProfileViewDto {
 
   @ApiPropertyOptional()
   professionalProfile?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    type: DoctorVerificationSnapshotDto,
+    description:
+      'Only present for `role=professional`. Drives the doctor verification gate on the dashboard.',
+  })
+  verification?: DoctorVerificationSnapshotDto;
 }
 
 export class GetMeProfileResponseDto {

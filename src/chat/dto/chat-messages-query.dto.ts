@@ -12,7 +12,8 @@ export class ChatMessagesQueryDto {
   limit?: number;
 
   @ApiPropertyOptional({
-    description: 'Message id — return messages **older** than this (cursor pagination).',
+    description:
+      'Message id — return messages **older** than this (cursor pagination).',
   })
   @IsOptional()
   @IsString()

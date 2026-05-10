@@ -6,8 +6,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { UserAppRole } from '../src/generated/prisma/client';
 
-const run =
-  process.env.DATABASE_URL && process.env.RUN_EDUCATION_E2E === '1';
+const run = process.env.DATABASE_URL && process.env.RUN_EDUCATION_E2E === '1';
 const d = run ? describe : describe.skip;
 
 d('Education (e2e, RUN_EDUCATION_E2E=1)', () => {
@@ -56,7 +55,9 @@ d('Education (e2e, RUN_EDUCATION_E2E=1)', () => {
       where: { slug: 'glossary' },
     });
     if (!glossary) {
-      throw new Error('Expected seeded education row slug=glossary; run prisma db seed.');
+      throw new Error(
+        'Expected seeded education row slug=glossary; run prisma db seed.',
+      );
     }
     glossaryId = glossary.id;
   });
@@ -75,7 +76,9 @@ d('Education (e2e, RUN_EDUCATION_E2E=1)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
     expect(res.body.items.length).toBeGreaterThan(0);
-    const row = res.body.items.find((x: { slug: string }) => x.slug === 'glossary');
+    const row = res.body.items.find(
+      (x: { slug: string }) => x.slug === 'glossary',
+    );
     expect(row).toMatchObject({
       id: glossaryId,
       slug: 'glossary',
@@ -110,7 +113,9 @@ d('Education (e2e, RUN_EDUCATION_E2E=1)', () => {
     const slugs = (list.body.items as { slug: string }[]).map((i) => i.slug);
     expect(slugs).not.toContain('glossary');
 
-    await request(app.getHttpServer()).get('/api/education/resources/glossary').expect(404);
+    await request(app.getHttpServer())
+      .get('/api/education/resources/glossary')
+      .expect(404);
 
     await request(app.getHttpServer())
       .patch(`/api/admin/education/resources/${glossaryId}`)
@@ -118,7 +123,9 @@ d('Education (e2e, RUN_EDUCATION_E2E=1)', () => {
       .send({ published: true })
       .expect(200);
 
-    await request(app.getHttpServer()).get('/api/education/resources/glossary').expect(200);
+    await request(app.getHttpServer())
+      .get('/api/education/resources/glossary')
+      .expect(200);
   });
 
   it('admin PATCH sortOrder null clears DB column', async () => {
@@ -127,7 +134,9 @@ d('Education (e2e, RUN_EDUCATION_E2E=1)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ sortOrder: 7 })
       .expect(200);
-    let row = await prisma.educationResource.findUnique({ where: { id: glossaryId } });
+    let row = await prisma.educationResource.findUnique({
+      where: { id: glossaryId },
+    });
     expect(row?.sortOrder).toBe(7);
 
     await request(app.getHttpServer())
@@ -135,7 +144,9 @@ d('Education (e2e, RUN_EDUCATION_E2E=1)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ sortOrder: null })
       .expect(200);
-    row = await prisma.educationResource.findUnique({ where: { id: glossaryId } });
+    row = await prisma.educationResource.findUnique({
+      where: { id: glossaryId },
+    });
     expect(row?.sortOrder).toBeNull();
   });
 

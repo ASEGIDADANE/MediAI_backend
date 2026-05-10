@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Logger,
   Patch,
+  Post,
   Put,
   Req,
   Res,
@@ -55,7 +56,9 @@ export class MeController {
       'Returns 200 with `profile: null` if onboarding was never completed; otherwise `profile` matches MediAI `DashboardProfile` (string `age`, merged `professionalProfile` JSON).',
   })
   @ApiResponse({ status: 200, type: GetMeProfileResponseDto })
-  getProfile(@CurrentUser() user: RequestUser): Promise<GetMeProfileResponseDto> {
+  getProfile(
+    @CurrentUser() user: RequestUser,
+  ): Promise<GetMeProfileResponseDto> {
     return this.me.getMe(user.id);
   }
 
@@ -92,10 +95,7 @@ export class MeController {
       byteLength,
       auditContextFromRequest(req),
     );
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${filename}"`,
-    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     return body;
   }
@@ -133,13 +133,20 @@ export class MeController {
   @ApiBearerAuth('access-token')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @ApiOperation({
-    summary: 'Partially update dashboard profile and/or professional profile JSON',
+    summary:
+      'Partially update dashboard profile and/or professional profile JSON',
     description:
       'Merge semantics. Requires an existing `UserProfile` (onboarding completed). Does not change `role` (use onboarding rules). `professionalProfile` is shallow-merged with the stored object.',
   })
   @ApiResponse({ status: 200, type: GetMeProfileResponseDto })
-  @ApiResponse({ status: 400, description: 'Validation or height system mismatch' })
-  @ApiResponse({ status: 404, description: 'No UserProfile — complete onboarding first' })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation or height system mismatch',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'No UserProfile — complete onboarding first',
+  })
   patchProfile(
     @CurrentUser() user: RequestUser,
     @Body() dto: PatchMeProfileDto,
@@ -172,13 +179,33 @@ export class MeController {
     );
   }
 
+  @Post('professional/submit-verification')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('access-token')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Submit a doctor verification packet for admin review.',
+    description:
+      'Validates that the merged `professionalProfile` JSON has the required fields (specialty, licenseNumber, yearsOfExperience, bio) and stamps `verificationSubmittedAt = now()`. Idempotent: re-submitting after a rejection clears `reviewedAt` / `notes`.',
+  })
+  @ApiResponse({ status: 200, type: GetMeProfileResponseDto })
+  @ApiResponse({ status: 400, description: 'Missing required fields' })
+  @ApiResponse({ status: 409, description: 'Account already verified' })
+  submitProfessionalVerification(
+    @CurrentUser() user: RequestUser,
+  ): Promise<GetMeProfileResponseDto> {
+    return this.me.submitVerification(user.id);
+  }
+
   @Patch('ai-doctor/setup')
   @HttpCode(HttpStatus.OK)
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('access-token')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @ApiOperation({
-    summary: 'Set AI Doctor questionnaire completed flag (replaces localStorage key)',
+    summary:
+      'Set AI Doctor questionnaire completed flag (replaces localStorage key)',
   })
   @ApiResponse({ status: 200, type: GetMeProfileResponseDto })
   @ApiResponse({ status: 404, description: 'No UserProfile' })

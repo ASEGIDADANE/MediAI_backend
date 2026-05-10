@@ -1,11 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Resend } from 'resend';
+import { request as httpsRequest } from 'https';
 import * as nodemailer from 'nodemailer';
 
 const SUBJECT = 'Reset your MediAI password';
+const RESEND_ENDPOINT = 'https://api.resend.com/emails';
+const RESEND_TIMEOUT_MS = 15_000;
 
 type EmailProvider = 'resend' | 'smtp';
+
+type ResendSuccess = { id: string };
+type ResendErrorBody = {
+  name?: string;
+  message?: string;
+  statusCode?: number;
+};
 
 /**
  * Transactional email (password reset). Uses Resend (default) or SMTP (Nodemailer).
@@ -34,7 +43,9 @@ export class EmailService {
   }
 
   private getProvider(): EmailProvider {
-    const p = (this.config.get<string>('EMAIL_PROVIDER', 'resend') || 'resend').toLowerCase();
+    const p = (
+      this.config.get<string>('EMAIL_PROVIDER', 'resend') || 'resend'
+    ).toLowerCase();
     if (p === 'smtp') {
       return 'smtp';
     }
@@ -131,21 +142,101 @@ export class EmailService {
       }
       return;
     }
-    const resend = new Resend(key);
-    const { data, error } = await resend.emails.send({
-      from,
-      to: [to],
-      subject: SUBJECT,
-      text,
-      html,
-    });
-    if (error) {
-      this.logger.error(
-        `Resend error: ${error.message ?? JSON.stringify(error)} (to=${to})`,
+
+    try {
+      const result = await this.callResendApi(key, {
+        from,
+        to: [to],
+        subject: SUBJECT,
+        text,
+        html,
+      });
+      this.logger.log(
+        `Password reset email sent via Resend to ${to} (id=${result.id})`,
       );
-      return;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      this.logger.error(`Resend error: ${message} (to=${to})`);
     }
-    this.logger.log(`Password reset email sent via Resend to ${to} (id=${data?.id ?? 'n/a'})`);
+  }
+
+  /**
+   * POST to Resend's REST API via Node's `https` module instead of using the
+   * `resend` SDK (which calls `fetch()` internally). Reason: in long-running
+   * Nest processes the undici connection pool that powers `fetch` can hold
+   * on to a half-dead socket after a single network blip, after which every
+   * subsequent fetch in the same process throws "Unable to fetch data" —
+   * even though a fresh `curl` from the same machine still works. Same
+   * mitigation pattern we use in `OverpassService.callOverpass()`. Opens a
+   * brand-new TCP connection per call (`Connection: close`), which is fine
+   * for transactional email volume.
+   */
+  private callResendApi(
+    apiKey: string,
+    payload: {
+      from: string;
+      to: string[];
+      subject: string;
+      text: string;
+      html: string;
+    },
+  ): Promise<ResendSuccess> {
+    const url = new URL(RESEND_ENDPOINT);
+    const body = JSON.stringify(payload);
+    return new Promise<ResendSuccess>((resolve, reject) => {
+      const req = httpsRequest(
+        {
+          method: 'POST',
+          protocol: url.protocol,
+          hostname: url.hostname,
+          port: url.port || 443,
+          path: url.pathname + url.search,
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body),
+            'User-Agent': 'mediai-backend',
+            Accept: 'application/json',
+            Connection: 'close',
+          },
+          // Bypass https.globalAgent so we get a fresh, isolated TCP socket
+          // every call — same defensive pattern as OverpassService, plus extra
+          // insurance against any pool/agent contamination from other code.
+          agent: false,
+          timeout: RESEND_TIMEOUT_MS,
+        },
+        (res) => {
+          const status = res.statusCode ?? 0;
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => {
+            const raw = Buffer.concat(chunks).toString('utf8');
+            if (status < 200 || status >= 300) {
+              const detail = parseResendErrorMessage(raw, status);
+              reject(new Error(`Resend HTTP ${status}: ${detail}`));
+              return;
+            }
+            try {
+              const parsed = JSON.parse(raw) as Partial<ResendSuccess>;
+              if (!parsed.id) {
+                reject(new Error(`Resend response missing id: ${raw}`));
+                return;
+              }
+              resolve({ id: parsed.id });
+            } catch (e) {
+              reject(e instanceof Error ? e : new Error(String(e)));
+            }
+          });
+          res.on('error', reject);
+        },
+      );
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy(new Error('Resend request timed out'));
+      });
+      req.write(body);
+      req.end();
+    });
   }
 
   private async sendWithSmtp(
@@ -189,6 +280,30 @@ export class EmailService {
       text,
       html,
     });
-    this.logger.log(`Password reset email sent via SMTP to ${to} (messageId=${info.messageId})`);
+    this.logger.log(
+      `Password reset email sent via SMTP to ${to} (messageId=${info.messageId})`,
+    );
   }
+}
+
+/**
+ * Pull a useful human message out of a Resend non-2xx response body.
+ * Examples:
+ *   422 → `{"name":"validation_error","message":"You can only send testing
+ *           emails to your own email address (mubaarakadem@gmail.com)."}`
+ *   401 → `{"name":"missing_api_key","message":"Missing API key..."}`
+ * Falls back to the raw body or a generic `HTTP <code>` if parsing fails.
+ */
+function parseResendErrorMessage(rawBody: string, statusCode: number): string {
+  if (!rawBody) return `HTTP ${statusCode}`;
+  try {
+    const parsed = JSON.parse(rawBody) as ResendErrorBody;
+    const parts = [parsed.name, parsed.message].filter(
+      (s): s is string => typeof s === 'string' && s.length > 0,
+    );
+    if (parts.length > 0) return parts.join(' — ');
+  } catch {
+    // not JSON; fall through to raw
+  }
+  return rawBody.length > 240 ? `${rawBody.slice(0, 240)}…` : rawBody;
 }

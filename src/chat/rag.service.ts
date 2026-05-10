@@ -151,7 +151,11 @@ export class RagService implements OnModuleInit {
   }
 
   private isDummyApiKey(): boolean {
-    const k = (this.config.get('LLM_API_KEY') || this.config.get('OPENAI_API_KEY') || '')
+    const k = (
+      this.config.get('LLM_API_KEY') ||
+      this.config.get('OPENAI_API_KEY') ||
+      ''
+    )
       .toString()
       .trim();
     if (!k) {
@@ -165,10 +169,10 @@ export class RagService implements OnModuleInit {
 
   private apiKey(): string {
     return (
-      (this.config.get('EMBEDDING_API_KEY') ||
-        this.config.get('LLM_API_KEY') ||
-        this.config.get('OPENAI_API_KEY') ||
-        '') as string
+      this.config.get('EMBEDDING_API_KEY') ||
+      this.config.get('LLM_API_KEY') ||
+      this.config.get('OPENAI_API_KEY') ||
+      ''
     ).toString();
   }
 

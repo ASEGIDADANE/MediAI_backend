@@ -4,12 +4,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { OnboardingUserRole, Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   ThreadDetailDto,
   ThreadListDto,
   ThreadMessageDto,
   ThreadSummaryDto,
+  UnreadCountDto,
 } from './dto/thread-message.dto';
 
 const PREVIEW_LIMIT = 200;
@@ -18,6 +20,11 @@ type DoctorSnapshot = {
   doctorUserId: string;
   doctorName: string;
   doctorSpecialty: string | null;
+};
+
+type PatientSnapshot = {
+  patientUserId: string;
+  patientName: string;
 };
 
 type StoredMessage = {
@@ -30,21 +37,38 @@ type StoredMessage = {
 };
 
 /**
- * Patient-side messaging service. Mirrors `ProfessionalService.{listMessages,
- * sendMessage}` but in the opposite direction:
- * - the caller is always identified as the patient
- * - threads are created lazily by the doctor side; the patient cannot create a
- *   new thread out of thin air, so `sendMessage` requires an existing thread
- * - the patient is authorized only for threads where `patientUserId === caller`
+ * Doctor↔patient messaging service for the calling user. The endpoints are
+ * symmetric: a patient sees only the doctors they're talking to, and a doctor
+ * sees only the patients they're talking to. The caller's
+ * `UserProfile.role` decides which side of every thread they are on.
+ *
+ * Read-state tracking lives on `DoctorPatientMessage.readAt`: a message is
+ * "unread" for the caller when `readAt IS NULL` and the sender is not the
+ * caller. `getThread` (patient side) and
+ * `ProfessionalService.listMessages` (doctor side) both flush the relevant
+ * unread messages on fetch, so opening a conversation clears that thread's
+ * badge.
  */
 @Injectable()
 export class MessagesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Inbox view: every doctor↔patient thread the caller participates in. */
+  /**
+   * Inbox view: every thread the caller participates in (as doctor or
+   * patient), sorted most-recent-activity first. Empty threads with no
+   * messages exchanged are filtered out so the inbox doesn't grow every time
+   * a doctor merely opens a patient's profile (which lazily creates a thread).
+   */
   async listThreads(callerUserId: string): Promise<ThreadListDto> {
+    const role = await this.resolveCallerRole(callerUserId);
+
+    const where: Prisma.DoctorPatientThreadWhereInput =
+      role === OnboardingUserRole.professional
+        ? { doctorUserId: callerUserId, messages: { some: {} } }
+        : { patientUserId: callerUserId, messages: { some: {} } };
+
     const threads = await this.prisma.doctorPatientThread.findMany({
-      where: { patientUserId: callerUserId },
+      where,
       orderBy: { updatedAt: 'desc' },
       include: {
         doctor: {
@@ -53,6 +77,15 @@ export class MessagesService {
             email: true,
             profile: {
               select: { preferredName: true, professionalProfile: true },
+            },
+          },
+        },
+        patient: {
+          select: {
+            id: true,
+            email: true,
+            profile: {
+              select: { preferredName: true },
             },
           },
         },
@@ -81,22 +114,49 @@ export class MessagesService {
 
     const items: ThreadSummaryDto[] = threads.map((t) => {
       const doctor = this.toDoctorSnapshot(t.doctor);
+      const patient = this.toPatientSnapshot(t.patient);
       const last = t.messages[0];
       return {
         threadId: t.id,
         ...doctor,
+        ...patient,
         lastMessageAt: (last?.createdAt ?? t.updatedAt).toISOString(),
         lastMessagePreview: last ? truncate(last.body, PREVIEW_LIMIT) : null,
         lastMessageSender: last
-          ? last.senderUserId === callerUserId
-            ? 'patient'
-            : 'doctor'
+          ? last.senderUserId === t.doctorUserId
+            ? 'doctor'
+            : 'patient'
           : null,
         unreadCount: t._count.messages,
       };
     });
 
     return { items };
+  }
+
+  /**
+   * Total unread inbound messages for the caller across every thread they're
+   * a participant in. Cheap aggregate query that powers the navbar badge.
+   * Works for both patient and doctor accounts because we filter by
+   * `senderUserId !== caller` rather than hardcoding a side.
+   */
+  async getUnreadCount(callerUserId: string): Promise<UnreadCountDto> {
+    const role = await this.resolveCallerRole(callerUserId);
+
+    const threadFilter: Prisma.DoctorPatientThreadWhereInput =
+      role === OnboardingUserRole.professional
+        ? { doctorUserId: callerUserId }
+        : { patientUserId: callerUserId };
+
+    const count = await this.prisma.doctorPatientMessage.count({
+      where: {
+        readAt: null,
+        NOT: { senderUserId: callerUserId },
+        thread: threadFilter,
+      },
+    });
+
+    return { count };
   }
 
   /**
@@ -168,6 +228,16 @@ export class MessagesService {
   }
 
   // --- helpers ---
+
+  private async resolveCallerRole(
+    callerUserId: string,
+  ): Promise<OnboardingUserRole | null> {
+    const profile = await this.prisma.userProfile.findUnique({
+      where: { userId: callerUserId },
+      select: { role: true },
+    });
+    return profile?.role ?? null;
+  }
 
   private async requirePatientThread(callerUserId: string, threadId: string) {
     const thread = await this.prisma.doctorPatientThread.findUnique({
@@ -241,6 +311,24 @@ export class MessagesService {
       doctorUserId: doctor.id,
       doctorName: fullName || preferred || fallback,
       doctorSpecialty: specialty.length > 0 ? specialty : null,
+    };
+  }
+
+  private toPatientSnapshot(
+    patient: {
+      id: string;
+      email: string;
+      profile: { preferredName: string | null } | null;
+    } | null,
+  ): PatientSnapshot {
+    if (!patient) {
+      return { patientUserId: '', patientName: 'Unknown patient' };
+    }
+    const preferred = patient.profile?.preferredName?.trim() ?? '';
+    const fallback = patient.email.split('@')[0] ?? patient.email;
+    return {
+      patientUserId: patient.id,
+      patientName: preferred || fallback,
     };
   }
 }

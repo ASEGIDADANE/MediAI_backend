@@ -10,7 +10,10 @@ import {
   PatchEducationResourceBodyDto,
 } from './dto/admin-education-resource-body.dto';
 import { isEducationSlug } from './education.constants';
-import { toEducationResourceAdminDto, toEducationResourceDto } from './education.mapper';
+import {
+  toEducationResourceAdminDto,
+  toEducationResourceDto,
+} from './education.mapper';
 
 @Injectable()
 export class EducationService {
@@ -45,7 +48,9 @@ export class EducationService {
   }
 
   async getByAdminId(id: string) {
-    const row = await this.prisma.educationResource.findUnique({ where: { id } });
+    const row = await this.prisma.educationResource.findUnique({
+      where: { id },
+    });
     if (!row) {
       throw new NotFoundException('Resource not found');
     }
@@ -71,7 +76,9 @@ export class EducationService {
       where: { slug: dto.slug },
     });
     if (existing) {
-      throw new ConflictException('An education resource with this slug already exists');
+      throw new ConflictException(
+        'An education resource with this slug already exists',
+      );
     }
     const row = await this.prisma.educationResource.create({
       data: this.toCreateData(dto),
@@ -108,12 +115,17 @@ export class EducationService {
     if (dto.published !== undefined) data.published = dto.published;
     if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
 
-    const row = await this.prisma.educationResource.update({ where: { id }, data });
+    const row = await this.prisma.educationResource.update({
+      where: { id },
+      data,
+    });
     return toEducationResourceAdminDto(row);
   }
 
   async softDeleteByAdmin(id: string) {
-    const row = await this.prisma.educationResource.findUnique({ where: { id } });
+    const row = await this.prisma.educationResource.findUnique({
+      where: { id },
+    });
     if (!row) {
       throw new NotFoundException('Resource not found');
     }

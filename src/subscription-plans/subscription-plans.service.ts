@@ -55,7 +55,9 @@ export class SubscriptionPlansService {
   }
 
   async getByIdAdmin(id: string) {
-    const row = await this.prisma.subscriptionPlan.findUnique({ where: { id } });
+    const row = await this.prisma.subscriptionPlan.findUnique({
+      where: { id },
+    });
     if (!row) {
       throw new NotFoundException('Plan not found');
     }

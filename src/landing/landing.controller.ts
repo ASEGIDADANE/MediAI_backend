@@ -8,7 +8,9 @@ export class LandingController {
   constructor(private readonly landing: LandingService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Public marketing / CMS payload (MediAI GET /api/landing)' })
+  @ApiOperation({
+    summary: 'Public marketing / CMS payload (MediAI GET /api/landing)',
+  })
   @ApiResponse({ status: 200, description: 'Landing JSON' })
   get() {
     return this.landing.getLanding();

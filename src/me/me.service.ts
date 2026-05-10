@@ -1,15 +1,25 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client';
 import {
   AccountAuditAction,
   OnboardingMeasurementSystem,
   OnboardingSexAtBirth,
+  OnboardingUserRole,
+  ProfessionalVerificationStatus,
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { toPrismaPreferredFeature } from '../profile/preferred-feature.util';
 import { AccountAuditService } from './account-audit.service';
 import type { AuditRequestContext } from './audit-request.util';
-import { MAX_PROFILE_JSON_CHARS, PatchMeProfileDto } from './dto/patch-me-profile.dto';
+import {
+  MAX_PROFILE_JSON_CHARS,
+  PatchMeProfileDto,
+} from './dto/patch-me-profile.dto';
 import { MedicalHistoryDataDto } from './dto/medical-history-data.dto';
 import { PatchAiDoctorSetupDto } from './dto/ai-doctor-setup.dto';
 import {
@@ -74,7 +84,9 @@ export class MeService {
       const merged = { ...base, ...dto.professionalProfile };
       const ms = JSON.stringify(merged);
       if (ms.length > MAX_PROFILE_JSON_CHARS) {
-        throw new BadRequestException('merged professionalProfile is too large');
+        throw new BadRequestException(
+          'merged professionalProfile is too large',
+        );
       }
       data.professionalProfile = merged as Prisma.InputJsonValue;
     }
@@ -136,9 +148,9 @@ export class MeService {
       dto.measurementSystem !== undefined;
     if (willTouchHeights) {
       this.validateHeights(msAfter, {
-        heightFeet: (dto.heightFeet ?? existing.heightFeet) ?? null,
-        heightInches: (dto.heightInches ?? existing.heightInches) ?? null,
-        heightCm: (dto.heightCm ?? existing.heightCm) ?? null,
+        heightFeet: dto.heightFeet ?? existing.heightFeet ?? null,
+        heightInches: dto.heightInches ?? existing.heightInches ?? null,
+        heightCm: dto.heightCm ?? existing.heightCm ?? null,
       });
     }
 
@@ -160,12 +172,9 @@ export class MeService {
     const fieldsTouched = (
       Object.keys(dto) as (keyof PatchMeProfileDto)[]
     ).filter((k) => dto[k] !== undefined);
-    await this.audit.log(
-      userId,
-      AccountAuditAction.profile_patch,
-      ctx,
-      { fields: fieldsTouched },
-    );
+    await this.audit.log(userId, AccountAuditAction.profile_patch, ctx, {
+      fields: fieldsTouched,
+    });
     return this.getMe(userId);
   }
 
@@ -194,12 +203,9 @@ export class MeService {
         medicalHistory: { ...body } as Prisma.InputJsonValue,
       },
     });
-    await this.audit.log(
-      userId,
-      AccountAuditAction.medical_history_put,
-      ctx,
-      { section: 'medicalHistory' },
-    );
+    await this.audit.log(userId, AccountAuditAction.medical_history_put, ctx, {
+      section: 'medicalHistory',
+    });
     return this.getMe(userId);
   }
 
@@ -230,9 +236,96 @@ export class MeService {
     return this.getMe(userId);
   }
 
+  /**
+   * Mark a professional's verification packet as ready for admin review.
+   *
+   * Requirements (all must be present, post-merge):
+   *   - `role = professional`
+   *   - existing `professionalProfile.specialty` (set during onboarding)
+   *   - existing `professionalProfile.licenseNumber`
+   *   - existing `professionalProfile.yearsOfExperience` (number ≥ 0)
+   *   - existing `professionalProfile.bio` (non-empty)
+   *
+   * Side-effects:
+   *   - sets `verificationStatus = pending` (resets after a rejection re-submit)
+   *   - sets `verificationSubmittedAt = now()`
+   *   - clears `verificationReviewedAt`, `verificationReviewedBy`,
+   *     `verificationNotes` (so an old rejection doesn't leak into the new
+   *     review)
+   *
+   * Returns the updated `getMe` snapshot so the client can hydrate without an
+   * extra round-trip.
+   */
+  async submitVerification(userId: string) {
+    const profile = await this.prisma.userProfile.findUnique({
+      where: { userId },
+    });
+    if (!profile) {
+      throw new NotFoundException('Complete onboarding first.');
+    }
+    if (profile.role !== OnboardingUserRole.professional) {
+      throw new BadRequestException(
+        'Only professional accounts request verification.',
+      );
+    }
+    if (
+      profile.verificationStatus === ProfessionalVerificationStatus.verified
+    ) {
+      throw new ConflictException('Your account is already verified.');
+    }
+
+    const prof =
+      profile.professionalProfile &&
+      typeof profile.professionalProfile === 'object' &&
+      !Array.isArray(profile.professionalProfile)
+        ? (profile.professionalProfile as Record<string, unknown>)
+        : {};
+
+    const missing: string[] = [];
+    const requireString = (key: string) => {
+      const v = prof[key];
+      if (typeof v !== 'string' || v.trim() === '') missing.push(key);
+    };
+    const requireNumber = (key: string) => {
+      const v = prof[key];
+      if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) {
+        missing.push(key);
+      }
+    };
+    requireString('specialty');
+    requireString('licenseNumber');
+    requireNumber('yearsOfExperience');
+    requireString('bio');
+
+    if (missing.length > 0) {
+      throw new BadRequestException({
+        message:
+          'Your verification packet is missing required fields. Fill them and try again.',
+        missing,
+      });
+    }
+
+    await this.prisma.userProfile.update({
+      where: { userId },
+      data: {
+        verificationStatus: ProfessionalVerificationStatus.pending,
+        verificationSubmittedAt: new Date(),
+        verificationReviewedAt: null,
+        verificationReviewedBy: null,
+        verificationNotes: null,
+      },
+    });
+
+    return this.getMe(userId);
+  }
+
   private validateHeights(
     system: 'imperial' | 'metric',
-    h: { heightFeet: string | null; heightInches: string | null; heightCm: string | null },
+    h: {
+      heightFeet: string | null;
+      heightInches: string | null;
+      heightCm: string | null;
+    },
   ) {
     if (system === 'imperial') {
       if (!h.heightFeet?.trim() || !h.heightInches?.trim()) {

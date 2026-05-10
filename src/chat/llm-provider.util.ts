@@ -1,7 +1,8 @@
 import { ConfigService } from '@nestjs/config';
 import { DUMMY_EMBEDDING_DIM } from './embedding-dummy.util';
 
-export const GEMINI_BASE_DEFAULT = 'https://generativelanguage.googleapis.com/v1beta';
+export const GEMINI_BASE_DEFAULT =
+  'https://generativelanguage.googleapis.com/v1beta';
 
 /**
  * `LLM_API_KEY` (or `OPENAI_API_KEY`). For Google AI Studio / Gemini, keys usually start with `AIza`.
@@ -75,16 +76,12 @@ export function geminiChatModelId(config: ConfigService): string {
 
 /** Model id for `.../models/{id}:embedContent` (e.g. gemini-embedding-001). */
 export function geminiEmbeddingModelId(config: ConfigService): string {
-  const m = (config.get('GEMINI_EMBEDDING_MODEL') || '')
-    .toString()
-    .trim();
+  const m = (config.get('GEMINI_EMBEDDING_MODEL') || '').toString().trim();
   return m || 'gemini-embedding-001';
 }
 
 function embeddingTimeoutMs(config: ConfigService): number {
-  return Number(
-    config.get('EMBEDDING_REQUEST_TIMEOUT_MS', '30000') || 30_000,
-  );
+  return Number(config.get('EMBEDDING_REQUEST_TIMEOUT_MS', '30000') || 30_000);
 }
 
 function embeddingTimeoutMsFromEnv(env: NodeJS.ProcessEnv): number {

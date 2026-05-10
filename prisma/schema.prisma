@@ -36,6 +36,21 @@ enum OnboardingPreferredFeature {
   top_doctors
 }
 
+/// Verification state for professional (doctor) accounts.
+///   - `pending`  – default after professional onboarding; doctor cannot
+///                  access the dashboard yet. While `verificationSubmittedAt`
+///                  is null they are still drafting; once non-null they're
+///                  awaiting admin review.
+///   - `verified` – admin approved; doctor has full access and appears on the
+///                  public Top Doctors list.
+///   - `rejected` – admin rejected; doctor sees the reason and may edit +
+///                  re-submit (which clears `verificationReviewedAt`).
+enum ProfessionalVerificationStatus {
+  pending
+  verified
+  rejected
+}
+
 model User {
   id           String      @id @default(uuid())
   email        String      @unique
@@ -127,9 +142,24 @@ model UserProfile {
   /// Replaces `mediai-ai-doctor-setup-completed` in localStorage when synced.
   aiDoctorSetupCompleted Boolean                 @default(false)
 
+  /// Doctor verification (only meaningful when `role = professional`).
+  /// Null means "not applicable" (personal users).
+  verificationStatus      ProfessionalVerificationStatus? @map("verification_status")
+  /// When the doctor clicked "Submit for review" with a complete profile.
+  /// Null while still drafting; non-null while pending review.
+  verificationSubmittedAt DateTime? @map("verification_submitted_at")
+  /// When the admin approved or rejected the submission.
+  verificationReviewedAt  DateTime? @map("verification_reviewed_at")
+  /// Admin's `User.id` who reviewed the submission.
+  verificationReviewedBy  String?   @map("verification_reviewed_by")
+  /// Admin's note – mainly used to explain rejections.
+  verificationNotes       String?   @map("verification_notes") @db.VarChar(2000)
+
   onboardingCompletedAt DateTime @default(now())
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+
+  @@index([verificationStatus])
 }
 
 /// Optional persistence for POST /api/chat/report-issue.

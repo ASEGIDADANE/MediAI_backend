@@ -40,7 +40,8 @@ async function bootstrap() {
         scheme: 'bearer',
         bearerFormat: 'JWT',
         name: 'Authorization',
-        description: 'Paste the value from POST /api/auth/login or register (accessToken)',
+        description:
+          'Paste the value from POST /api/auth/login or register (accessToken)',
         in: 'header',
       },
       'access-token',
@@ -79,7 +80,8 @@ async function bootstrap() {
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig, {
-    operationIdFactory: (_controllerKey: string, methodKey: string) => methodKey,
+    operationIdFactory: (_controllerKey: string, methodKey: string) =>
+      methodKey,
   });
   SwaggerModule.setup('docs', app, document, {
     jsonDocumentUrl: 'docs/json',

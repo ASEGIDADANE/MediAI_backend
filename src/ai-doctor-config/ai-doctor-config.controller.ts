@@ -8,7 +8,9 @@ export class AiDoctorConfigController {
   constructor(private readonly service: AiDoctorConfigService) {}
 
   @Get('config')
-  @ApiOperation({ summary: 'AI Doctor wizard steps (GET /api/ai-doctor/config)' })
+  @ApiOperation({
+    summary: 'AI Doctor wizard steps (GET /api/ai-doctor/config)',
+  })
   getConfig() {
     return this.service.getConfig();
   }

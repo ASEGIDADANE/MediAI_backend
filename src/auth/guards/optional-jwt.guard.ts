@@ -25,9 +25,7 @@ export class OptionalJwtAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
-    const req = ctx
-      .switchToHttp()
-      .getRequest<RequestWithUser>();
+    const req = ctx.switchToHttp().getRequest<RequestWithUser>();
     const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
     if (!token) {
       req.user = undefined;

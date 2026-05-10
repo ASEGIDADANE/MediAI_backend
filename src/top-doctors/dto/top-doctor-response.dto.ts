@@ -1,10 +1,16 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class ConsultationFeesDto {
-  @ApiProperty({ example: 490, description: 'Video consultation — USD whole dollars' })
+  @ApiProperty({
+    example: 490,
+    description: 'Video consultation — USD whole dollars',
+  })
   video!: number;
 
-  @ApiProperty({ example: 490, description: 'Written consultation — USD whole dollars' })
+  @ApiProperty({
+    example: 490,
+    description: 'Written consultation — USD whole dollars',
+  })
   written!: number;
 }
 

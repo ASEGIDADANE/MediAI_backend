@@ -1,4 +1,15 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
 import {
@@ -8,17 +19,23 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { UserAppRole } from '../generated/prisma/client';
-import { CurrentUser, type RequestUser } from '../auth/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type RequestUser,
+} from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { AdminService } from './admin.service';
+import { AdminProfessionalVerificationsQueryDto } from './dto/admin-professional-verifications-query.dto';
 import { AdminRecentActivityQueryDto } from './dto/admin-recent-activity-query.dto';
+import { AdminRejectVerificationDto } from './dto/admin-reject-verification.dto';
 import { AdminSupportReportsQueryDto } from './dto/admin-support-reports-query.dto';
 import { AdminUsersQueryDto } from './dto/admin-users-query.dto';
 import {
   AdminBillingSummaryResponseDto,
   AdminPaginatedSupportReportsResponseDto,
   AdminPaginatedUsersResponseDto,
+  AdminProfessionalVerificationsResponseDto,
   AdminRecentActivityResponseDto,
   AdminSummaryResponseDto,
 } from './dto/admin-response.dtos';
@@ -93,6 +110,56 @@ export class AdminController {
     @Query() q: AdminRecentActivityQueryDto,
   ): Promise<AdminRecentActivityResponseDto> {
     return this.admin.getRecentActivity({ limit: q.limit });
+  }
+
+  @Get('professional-verifications')
+  @ApiOperation({
+    summary: 'List doctor verification packets (paginated)',
+    description:
+      'Default `status=awaiting` returns only doctors who clicked Submit and are still pending review (FIFO). Use `status=verified|rejected|pending|all` to inspect history.',
+  })
+  @ApiResponse({ status: 200, type: AdminProfessionalVerificationsResponseDto })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT' })
+  @ApiResponse({ status: 403, description: 'Not an admin' })
+  async listProfessionalVerifications(
+    @CurrentUser() _admin: RequestUser,
+    @Query() q: AdminProfessionalVerificationsQueryDto,
+  ): Promise<AdminProfessionalVerificationsResponseDto> {
+    return this.admin.listProfessionalVerifications(q);
+  }
+
+  @Post('professional-verifications/:userId/approve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Approve a doctor — they get full dashboard access immediately.',
+  })
+  @ApiResponse({ status: 200, schema: { example: { ok: true } } })
+  @ApiResponse({ status: 400, description: 'Not a professional account' })
+  @ApiResponse({ status: 404, description: 'Profile not found' })
+  async approveProfessional(
+    @CurrentUser() admin: RequestUser,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+  ): Promise<{ ok: true }> {
+    await this.admin.approveProfessional(userId, admin.id);
+    return { ok: true };
+  }
+
+  @Post('professional-verifications/:userId/reject')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Reject a doctor with a note — they will see the reason and can resubmit.',
+  })
+  @ApiResponse({ status: 200, schema: { example: { ok: true } } })
+  @ApiResponse({ status: 400, description: 'Notes empty / not a professional' })
+  @ApiResponse({ status: 404, description: 'Profile not found' })
+  async rejectProfessional(
+    @CurrentUser() admin: RequestUser,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @Body() body: AdminRejectVerificationDto,
+  ): Promise<{ ok: true }> {
+    await this.admin.rejectProfessional(userId, admin.id, body.notes);
+    return { ok: true };
   }
 
   @Get('billing-summary')

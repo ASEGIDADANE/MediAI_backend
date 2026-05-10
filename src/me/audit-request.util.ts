@@ -15,10 +15,10 @@ export function auditContextFromRequest(req: Request): AuditRequestContext {
 function getClientIp(req: Request): string | undefined {
   const xf = req.headers['x-forwarded-for'];
   if (typeof xf === 'string' && xf.trim()) {
-    return xf.split(',')[0]!.trim().slice(0, 64);
+    return xf.split(',')[0].trim().slice(0, 64);
   }
   if (Array.isArray(xf) && xf[0]) {
-    return String(xf[0]).split(',')[0]!.trim().slice(0, 64);
+    return String(xf[0]).split(',')[0].trim().slice(0, 64);
   }
   const ip = req.ip || req.socket?.remoteAddress;
   return ip ? ip.slice(0, 64) : undefined;

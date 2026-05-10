@@ -41,7 +41,9 @@ import { PostPersonalMessageResponseDto } from './dto/post-personal-message-resp
 import { ReportIssueDto } from './dto/report-issue.dto';
 import { ChatGeneralRateGuard } from './guards/chat-general-rate.guard';
 
-function sseErrorPayload(e: unknown): { error: { code: string; message: string } } {
+function sseErrorPayload(e: unknown): {
+  error: { code: string; message: string };
+} {
   if (e instanceof HttpException) {
     const s = e.getStatus();
     const r = e.getResponse();
@@ -51,7 +53,7 @@ function sseErrorPayload(e: unknown): { error: { code: string; message: string }
         : typeof r === 'object' && r && 'message' in r
           ? (r as { message: string | string[] }).message
           : e.message;
-    const message = Array.isArray(raw) ? raw[0] ?? e.message : String(raw);
+    const message = Array.isArray(raw) ? (raw[0] ?? e.message) : String(raw);
     const code =
       s === 504
         ? 'llm_timeout'
@@ -78,7 +80,9 @@ export class ChatController {
   ) {}
 
   @Get('config')
-  @ApiOperation({ summary: 'Chat history seed & doctor types (GET /api/chat/config)' })
+  @ApiOperation({
+    summary: 'Chat history seed & doctor types (GET /api/chat/config)',
+  })
   getConfig() {
     return this.chat.getConfig();
   }
@@ -90,7 +94,10 @@ export class ChatController {
   @ApiOperation({
     summary: 'List personal chat threads (JWT `sub` only; no userId in query)',
   })
-  @ApiResponse({ status: 200, description: 'Paginated personal `ChatConversation` list' })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated personal `ChatConversation` list',
+  })
   @ApiResponse({ status: 401, description: 'Missing or invalid token' })
   listConversations(
     @CurrentUser() user: RequestUser,
@@ -110,7 +117,8 @@ export class ChatController {
   @ApiBearerAuth('access-token')
   @ApiParam({ name: 'conversationId', format: 'uuid' })
   @ApiOperation({
-    summary: 'Paginated messages for a personal thread (only if `conversationId` belongs to JWT sub)',
+    summary:
+      'Paginated messages for a personal thread (only if `conversationId` belongs to JWT sub)',
   })
   @ApiResponse({ status: 200, description: 'Chronological messages' })
   @ApiResponse({ status: 404, description: 'Not found or not owned' })
@@ -133,13 +141,17 @@ export class ChatController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Personalized chat (JWT; uses UserProfile + medicalHistory on server)',
+    summary:
+      'Personalized chat (JWT; uses UserProfile + medicalHistory on server)',
     description:
       'Does not accept profile from the client. `LLM_API_KEY=dummy` (or unset) returns a dev placeholder until a real key is set.',
   })
   @ApiResponse({ status: 200, type: PostPersonalMessageResponseDto })
   @ApiResponse({ status: 401, description: 'Missing or invalid token' })
-  @ApiResponse({ status: 404, description: 'Onboarding not completed or unknown conversation' })
+  @ApiResponse({
+    status: 404,
+    description: 'Onboarding not completed or unknown conversation',
+  })
   @ApiResponse({ status: 502, description: 'Upstream LLM / gateway' })
   @ApiResponse({ status: 503, description: 'LLM rate-limited' })
   @ApiResponse({ status: 504, description: 'LLM timeout' })
@@ -157,7 +169,8 @@ export class ChatController {
   @ApiBearerAuth('access-token')
   @ApiBody({ type: PostPersonalMessageDto })
   @ApiOperation({
-    summary: 'Personalized chat (SSE) — `data: {"token":...}` lines, then done + [DONE]',
+    summary:
+      'Personalized chat (SSE) — `data: {"token":...}` lines, then done + [DONE]',
     description:
       'On provider failure after 200, one `data: {"error":{"code","message"}}` line; then connection closes. No PHI in `error` fields.',
   })
@@ -224,7 +237,10 @@ export class ChatController {
   @UseGuards(OptionalJwtAuthGuard, ChatGeneralRateGuard, ThrottlerGuard)
   @SkipThrottle()
   @ApiBody({ type: PostGeneralMessageDto })
-  @ApiOperation({ summary: 'General chat (SSE) — no profile; optional Bearer for per-user cap' })
+  @ApiOperation({
+    summary:
+      'General chat (SSE) — no profile; optional Bearer for per-user cap',
+  })
   @ApiResponse({ status: 200, description: 'text/event-stream' })
   @ApiResponse({ status: 502, description: 'In-stream' })
   @ApiResponse({ status: 503, description: 'In-stream' })

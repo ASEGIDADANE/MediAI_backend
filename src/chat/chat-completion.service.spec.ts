@@ -1,9 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import {
-  ChatThreadKind,
-  OnboardingUserRole,
-} from '../generated/prisma/client';
+import { ChatThreadKind, OnboardingUserRole } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChatCompletionService } from './chat-completion.service';
 import { ChatQuotaService } from './chat-quota.service';
@@ -32,10 +29,8 @@ describe('ChatCompletionService — general', () => {
     const prisma = prismaMock();
     prisma.userProfile.findUnique = jest.fn();
 
-    (prisma.chatConversation.findFirst as jest.Mock) = jest.fn(
-      () => null,
-    );
-    (prisma.chatConversation.create as jest.Mock) = jest.fn(() =>
+    prisma.chatConversation.findFirst = jest.fn(() => null);
+    prisma.chatConversation.create = jest.fn(() =>
       Promise.resolve({
         id: 'c1',
         kind: ChatThreadKind.general,
@@ -43,10 +38,10 @@ describe('ChatCompletionService — general', () => {
         clientSessionId: 's',
       }),
     );
-    (prisma.chatMessage.findMany as jest.Mock) = jest.fn(() => [
+    prisma.chatMessage.findMany = jest.fn(() => [
       { role: 'user' as const, content: 'Hello general' },
     ]);
-    (prisma.chatMessage.create as jest.Mock) = jest
+    prisma.chatMessage.create = jest
       .fn()
       .mockResolvedValueOnce({ id: 'um' })
       .mockResolvedValueOnce({ id: 'am' });
@@ -74,10 +69,7 @@ describe('ChatCompletionService — general', () => {
     }).compile();
 
     const svc = m.get(ChatCompletionService);
-    const out = await svc.sendGeneral(
-      { message: 'Hello general' },
-      undefined,
-    );
+    const out = await svc.sendGeneral({ message: 'Hello general' }, undefined);
 
     expect(out.reply).toBe('ok');
     expect(out.messageId).toBe('am');
@@ -87,7 +79,10 @@ describe('ChatCompletionService — general', () => {
 });
 
 describe('ChatCompletionService — clinical assistant (patientUserId)', () => {
-  function makeService(prisma: ReturnType<typeof prismaMock>, userContextBuild = jest.fn(() => 'PATIENT_BLOCK')) {
+  function makeService(
+    prisma: ReturnType<typeof prismaMock>,
+    userContextBuild = jest.fn(() => 'PATIENT_BLOCK'),
+  ) {
     const userContext = { buildFromUserProfile: userContextBuild };
     const rag = { retrieve: jest.fn(() => Promise.resolve([])) };
     const llm = {
@@ -118,7 +113,7 @@ describe('ChatCompletionService — clinical assistant (patientUserId)', () => {
 
   it('rejects non-professional callers asking about a patient', async () => {
     const prisma = prismaMock();
-    (prisma.userProfile.findUnique as jest.Mock) = jest
+    prisma.userProfile.findUnique = jest
       .fn()
       .mockResolvedValueOnce({ role: OnboardingUserRole.personal }); // caller is patient
     const { svc } = await makeService(prisma);
@@ -135,7 +130,7 @@ describe('ChatCompletionService — clinical assistant (patientUserId)', () => {
   it("feeds the patient's profile to the LLM (not the doctor's) and tags the conversation", async () => {
     const prisma = prismaMock();
     const patientId = '11111111-2222-4333-8444-555555555555';
-    (prisma.userProfile.findUnique as jest.Mock) = jest
+    prisma.userProfile.findUnique = jest
       .fn()
       // 1st: caller role check (must be professional)
       .mockResolvedValueOnce({ role: OnboardingUserRole.professional })
@@ -145,8 +140,8 @@ describe('ChatCompletionService — clinical assistant (patientUserId)', () => {
         role: OnboardingUserRole.personal,
         preferredName: 'Aisha',
       });
-    (prisma.chatConversation.findFirst as jest.Mock) = jest.fn(() => null);
-    (prisma.chatConversation.create as jest.Mock) = jest.fn(() =>
+    prisma.chatConversation.findFirst = jest.fn(() => null);
+    prisma.chatConversation.create = jest.fn(() =>
       Promise.resolve({
         id: 'c-doc-pat',
         kind: ChatThreadKind.personal,
@@ -154,10 +149,10 @@ describe('ChatCompletionService — clinical assistant (patientUserId)', () => {
         patientUserId: patientId,
       }),
     );
-    (prisma.chatMessage.findMany as jest.Mock) = jest.fn(() => [
+    prisma.chatMessage.findMany = jest.fn(() => [
       { role: 'user' as const, content: 'Hi' },
     ]);
-    (prisma.chatMessage.create as jest.Mock) = jest
+    prisma.chatMessage.create = jest
       .fn()
       .mockResolvedValueOnce({ id: 'um' })
       .mockResolvedValueOnce({ id: 'am' });
@@ -188,7 +183,7 @@ describe('ChatCompletionService — clinical assistant (patientUserId)', () => {
     const prisma = prismaMock();
     const patientId = '11111111-2222-4333-8444-555555555555';
     const otherPatientId = '22222222-3333-4444-8555-666666666666';
-    (prisma.userProfile.findUnique as jest.Mock) = jest
+    prisma.userProfile.findUnique = jest
       .fn()
       .mockResolvedValueOnce({ role: OnboardingUserRole.professional })
       .mockResolvedValueOnce({
@@ -196,7 +191,7 @@ describe('ChatCompletionService — clinical assistant (patientUserId)', () => {
         role: OnboardingUserRole.personal,
       });
     // Existing conversation belongs to a *different* patient.
-    (prisma.chatConversation.findFirst as jest.Mock) = jest.fn(() =>
+    prisma.chatConversation.findFirst = jest.fn(() =>
       Promise.resolve({
         id: 'c-existing',
         userId: 'doc-1',

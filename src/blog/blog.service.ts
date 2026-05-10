@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -17,7 +14,10 @@ import {
   BlogAdminArticlesQueryDto,
   takeSkipBlogAdminArticles,
 } from './dto/blog-admin-articles-query.dto';
-import { takeSkipBlogArticles, BlogArticlesQueryDto } from './dto/blog-articles-query.dto';
+import {
+  takeSkipBlogArticles,
+  BlogArticlesQueryDto,
+} from './dto/blog-articles-query.dto';
 import { toBlogArticleAdminDto, toBlogArticleDto } from './blog.mapper';
 
 @Injectable()
@@ -157,7 +157,9 @@ export class BlogService {
     };
   }
 
-  private createDataFromDto(d: CreateBlogArticleBodyDto): Prisma.BlogArticleCreateInput {
+  private createDataFromDto(
+    d: CreateBlogArticleBodyDto,
+  ): Prisma.BlogArticleCreateInput {
     return {
       title: d.title,
       category: d.category,
@@ -181,7 +183,9 @@ export class BlogService {
   }
 
   async patchByAdmin(id: string, dto: PatchBlogArticleBodyDto) {
-    const existing = await this.prisma.blogArticle.findUnique({ where: { id } });
+    const existing = await this.prisma.blogArticle.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException('Article not found');
     }
@@ -212,7 +216,9 @@ export class BlogService {
   }
 
   async softDeleteByAdmin(id: string) {
-    const existing = await this.prisma.blogArticle.findUnique({ where: { id } });
+    const existing = await this.prisma.blogArticle.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException('Article not found');
     }
@@ -222,7 +228,9 @@ export class BlogService {
     });
   }
 
-  async putHomeByAdmin(dto: BlogHomeConfigBodyDto): Promise<BlogHomeResponseDto> {
+  async putHomeByAdmin(
+    dto: BlogHomeConfigBodyDto,
+  ): Promise<BlogHomeResponseDto> {
     const row = await this.prisma.blogHomeConfig.upsert({
       where: { id: 'default' },
       create: {

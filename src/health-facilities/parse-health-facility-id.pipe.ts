@@ -15,9 +15,10 @@ export const HEALTH_FACILITY_ID_MAX_LENGTH = 64;
 const HEALTH_FACILITY_ID_PATTERN = /^fac-[A-Za-z0-9-]+$/;
 
 @Injectable()
-export class ParseHealthFacilityIdPipe
-  implements PipeTransform<string, string>
-{
+export class ParseHealthFacilityIdPipe implements PipeTransform<
+  string,
+  string
+> {
   transform(value: string, _metadata: ArgumentMetadata): string {
     if (typeof value !== 'string' || !value.trim()) {
       throw new BadRequestException('Facility id is required');

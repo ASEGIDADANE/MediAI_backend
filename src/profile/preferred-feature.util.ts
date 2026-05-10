@@ -3,7 +3,9 @@ import { OnboardingPreferredFeature } from '../generated/prisma/client';
 
 export type PreferredFeatureString = 'ai-doctor' | 'top-doctors';
 
-export function toPrismaPreferredFeature(id: string): OnboardingPreferredFeature {
+export function toPrismaPreferredFeature(
+  id: string,
+): OnboardingPreferredFeature {
   switch (id) {
     case 'ai-doctor':
       return OnboardingPreferredFeature.ai_doctor;
