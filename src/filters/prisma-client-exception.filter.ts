@@ -14,7 +14,9 @@ export class PrismaClientExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(PrismaClientExceptionFilter.name);
 
   catch(exception: Prisma.PrismaClientKnownRequestError, host: ArgumentsHost) {
-    const res = host.switchToHttp().getResponse<{ status: (c: number) => { json: (b: unknown) => void } }>();
+    const res = host
+      .switchToHttp()
+      .getResponse<{ status: (c: number) => { json: (b: unknown) => void } }>();
     if (DB_DOWN_CODES.has(exception.code)) {
       this.logger.error(`Prisma ${exception.code}: ${exception.message}`);
       return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({

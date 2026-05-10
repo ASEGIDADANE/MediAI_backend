@@ -27,14 +27,12 @@ export class ChatGeneralRateGuard implements CanActivate {
     const anonRpm = Number(
       this.config.get('CHAT_ANON_GENERAL_RPM', '20') || 20,
     );
-    const req = context.switchToHttp().getRequest<
-      Request & { user?: { id: string } }
-    >();
+    const req = context
+      .switchToHttp()
+      .getRequest<Request & { user?: { id: string } }>();
     const user = req.user;
     const limit = user ? authRpm : anonRpm;
-    const key = user
-      ? `g:u:${user.id}`
-      : `g:ip:${this.getClientIp(req)}`;
+    const key = user ? `g:u:${user.id}` : `g:ip:${this.getClientIp(req)}`;
     const now = Date.now();
     let h = this.store.get(key);
     if (!h || now - h.windowStart >= this.windowMs) {
@@ -54,10 +52,10 @@ export class ChatGeneralRateGuard implements CanActivate {
   private getClientIp(req: Request): string {
     const xf = req.headers['x-forwarded-for'];
     if (typeof xf === 'string' && xf.trim()) {
-      return xf.split(',')[0]!.trim();
+      return xf.split(',')[0].trim();
     }
     if (Array.isArray(xf) && xf[0]) {
-      return String(xf[0]).split(',')[0]!.trim();
+      return String(xf[0]).split(',')[0].trim();
     }
     return req.ip || req.socket?.remoteAddress || 'unknown';
   }

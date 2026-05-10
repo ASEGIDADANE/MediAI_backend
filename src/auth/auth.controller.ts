@@ -28,7 +28,10 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { AuthTokensDto } from './dto/auth-tokens.dto';
 import { MessageResponseDto } from './dto/message-response.dto';
 import { UserPublicDto } from './dto/user-public.dto';
-import { CurrentUser, type RequestUser } from './decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type RequestUser,
+} from './decorators/current-user.decorator';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -52,7 +55,11 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: 'Sign in with email and password' })
   @ApiBody({ type: LoginDto })
-  @ApiResponse({ status: 200, description: 'Authenticated', type: AuthTokensDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Authenticated',
+    type: AuthTokensDto,
+  })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(@Body() dto: LoginDto): Promise<AuthTokensDto> {
     return this.auth.login(dto);
@@ -68,11 +75,12 @@ export class AuthController {
   })
   @ApiBody({ type: ForgotPasswordDto })
   @ApiResponse({ status: 200, type: MessageResponseDto })
-  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<MessageResponseDto> {
+  async forgotPassword(
+    @Body() dto: ForgotPasswordDto,
+  ): Promise<MessageResponseDto> {
     await this.auth.forgotPassword(dto);
     return {
-      message:
-        'If an account exists for this email, a reset link was sent.',
+      message: 'If an account exists for this email, a reset link was sent.',
     };
   }
 
@@ -82,7 +90,9 @@ export class AuthController {
   @ApiBody({ type: ResetPasswordDto })
   @ApiResponse({ status: 200, type: MessageResponseDto })
   @ApiResponse({ status: 401, description: 'Invalid or expired token' })
-  async resetPassword(@Body() dto: ResetPasswordDto): Promise<MessageResponseDto> {
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+  ): Promise<MessageResponseDto> {
     await this.auth.resetPassword(dto);
     return { message: 'Password has been reset. You can sign in now.' };
   }
@@ -108,7 +118,10 @@ export class AuthController {
   })
   @ApiQuery({ name: 'code', required: false })
   @ApiQuery({ name: 'error', required: false })
-  @ApiResponse({ status: 302, description: 'Redirect to frontend with token or error' })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirect to frontend with token or error',
+  })
   async googleCallback(
     @Query('code') code: string | undefined,
     @Query('error') oauthError: string | undefined,

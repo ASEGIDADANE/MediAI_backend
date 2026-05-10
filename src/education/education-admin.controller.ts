@@ -21,7 +21,10 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { UserAppRole } from '../generated/prisma/client';
-import { CurrentUser, type RequestUser } from '../auth/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type RequestUser,
+} from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import {
@@ -44,9 +47,13 @@ export class EducationAdminController {
   constructor(private readonly education: EducationService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all education resources (including unpublished)' })
+  @ApiOperation({
+    summary: 'List all education resources (including unpublished)',
+  })
   @ApiResponse({ status: 200, type: EducationResourcesAdminListResponseDto })
-  listAll(@CurrentUser() _a: RequestUser): Promise<EducationResourcesAdminListResponseDto> {
+  listAll(
+    @CurrentUser() _a: RequestUser,
+  ): Promise<EducationResourcesAdminListResponseDto> {
     return this.education.listAllForAdmin();
   }
 

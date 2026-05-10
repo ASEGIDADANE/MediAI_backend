@@ -60,7 +60,10 @@ export class BlogArticleAdminResponseDto extends BlogArticleResponseDto {
   @ApiProperty({ example: '2025-01-07T12:00:00.000Z' })
   publishedAt!: string;
 
-  @ApiPropertyOptional({ nullable: true, description: 'Raw display override (maps to public `date`)' })
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Raw display override (maps to public `date`)',
+  })
   dateDisplay!: string | null;
 
   @ApiPropertyOptional({ nullable: true })

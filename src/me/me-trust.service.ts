@@ -164,12 +164,9 @@ export class MeTrustService {
     byteLength: number,
     ctx: AuditRequestContext | undefined,
   ): Promise<void> {
-    await this.audit.log(
-      userId,
-      AccountAuditAction.data_export,
-      ctx,
-      { byteLength },
-    );
+    await this.audit.log(userId, AccountAuditAction.data_export, ctx, {
+      byteLength,
+    });
   }
 
   async deleteAccount(
@@ -191,7 +188,9 @@ export class MeTrustService {
 
     if (user.passwordHash) {
       if (!dto.password) {
-        throw new BadRequestException('password is required to delete this account');
+        throw new BadRequestException(
+          'password is required to delete this account',
+        );
       }
       const ok = await bcrypt.compare(dto.password, user.passwordHash);
       if (!ok) {
@@ -213,9 +212,14 @@ export class MeTrustService {
       }),
     );
 
-    await this.audit.log(userId, AccountAuditAction.account_delete_initiated, ctx, {
-      confirmMethod: user.passwordHash ? 'password' : 'oauth',
-    });
+    await this.audit.log(
+      userId,
+      AccountAuditAction.account_delete_initiated,
+      ctx,
+      {
+        confirmMethod: user.passwordHash ? 'password' : 'oauth',
+      },
+    );
 
     await this.prisma.$transaction(async (tx) => {
       await tx.supportReport.deleteMany({ where: { userId } });

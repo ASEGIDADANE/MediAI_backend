@@ -5,7 +5,7 @@ function asStringArray(v: Prisma.JsonValue): string[] {
   if (!Array.isArray(v)) {
     return [];
   }
-  return v.filter((x) => typeof x === 'string') as string[];
+  return v.filter((x) => typeof x === 'string');
 }
 
 function asExpArray(

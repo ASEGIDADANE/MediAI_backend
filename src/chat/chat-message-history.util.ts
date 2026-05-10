@@ -17,7 +17,7 @@ export function trimHistoryToApproxTokens(
   const out: LlmHistoryTurn[] = [];
   let used = 0;
   for (let i = turns.length - 1; i >= 0; i--) {
-    const t = turns[i]!;
+    const t = turns[i];
     const c = t.content.length;
     const next = used + c;
     if (next > maxInputChars && out.length >= minMessagesToKeep) {
@@ -57,10 +57,6 @@ export function buildLlmRequestMessages(
 ): { role: 'system' | 'user' | 'assistant'; content: string }[] {
   const systemChars = systemPrompt.length;
   const historyBudget = Math.max(0, maxInputChars - systemChars);
-  const trimmed = trimHistoryToApproxTokens(
-    history,
-    historyBudget,
-    1,
-  );
+  const trimmed = trimHistoryToApproxTokens(history, historyBudget, 1);
   return [{ role: 'system', content: systemPrompt }, ...trimmed];
 }

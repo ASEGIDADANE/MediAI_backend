@@ -96,7 +96,9 @@ describeChat('Chat — production checks (e2e, RUN_CHAT_E2E=1)', () => {
       total: expect.any(Number),
       items: expect.any(Array),
     });
-    const row = (res.body.items as { id: string }[]).find((i) => i.id === convId);
+    const row = (res.body.items as { id: string }[]).find(
+      (i) => i.id === convId,
+    );
     expect(row).toBeDefined();
   });
 
@@ -105,7 +107,10 @@ describeChat('Chat — production checks (e2e, RUN_CHAT_E2E=1)', () => {
       .get(`/api/chat/conversations/${convId}/messages`)
       .set('Authorization', `Bearer ${token1}`)
       .expect(200);
-    expect(res.body).toMatchObject({ items: expect.any(Array), hasMore: false });
+    expect(res.body).toMatchObject({
+      items: expect.any(Array),
+      hasMore: false,
+    });
     expect((res.body.items as unknown[]).length).toBeGreaterThanOrEqual(2);
   });
 

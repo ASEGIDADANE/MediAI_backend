@@ -17,7 +17,9 @@ export class AdminUserListItemDto {
   @ApiProperty()
   updatedAt: string;
 
-  @ApiProperty({ description: 'User has completed onboarding (UserProfile row exists)' })
+  @ApiProperty({
+    description: 'User has completed onboarding (UserProfile row exists)',
+  })
   hasProfile: boolean;
 
   @ApiProperty({
@@ -38,7 +40,8 @@ export class AdminUserListItemDto {
   @ApiProperty({
     required: false,
     nullable: true,
-    description: 'Specialty (extracted from `professionalProfile.specialty`) when the user is a professional.',
+    description:
+      'Specialty (extracted from `professionalProfile.specialty`) when the user is a professional.',
   })
   specialty: string | null;
 }
@@ -95,7 +98,9 @@ export type AdminActivityType =
   | 'support_report';
 
 export class AdminActivityItemDto {
-  @ApiProperty({ description: 'Synthetic id like `signup_<userId>` or `audit_<logId>`' })
+  @ApiProperty({
+    description: 'Synthetic id like `signup_<userId>` or `audit_<logId>`',
+  })
   id: string;
 
   @ApiProperty({
@@ -141,6 +146,60 @@ export class AdminSummaryResponseDto {
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Professional (doctor) verifications                                       */
+/* -------------------------------------------------------------------------- */
+
+export type AdminVerificationStatus = 'pending' | 'verified' | 'rejected';
+
+export class AdminProfessionalVerificationItemDto {
+  @ApiProperty()
+  userId: string;
+
+  @ApiProperty()
+  email: string;
+
+  @ApiProperty({ enum: ['pending', 'verified', 'rejected'] })
+  status: AdminVerificationStatus;
+
+  @ApiProperty({ nullable: true, description: 'ISO 8601' })
+  submittedAt: string | null;
+
+  @ApiProperty({ nullable: true, description: 'ISO 8601' })
+  reviewedAt: string | null;
+
+  @ApiProperty({ nullable: true })
+  reviewedBy: string | null;
+
+  @ApiProperty({ nullable: true })
+  notes: string | null;
+
+  @ApiProperty({ description: 'When the user account was created (ISO 8601)' })
+  createdAt: string;
+
+  @ApiProperty({
+    description:
+      'Full `professionalProfile` JSON so the admin can read the bio / experience / etc. without a second round-trip.',
+    type: 'object',
+    additionalProperties: true,
+  })
+  professionalProfile: Record<string, unknown>;
+}
+
+export class AdminProfessionalVerificationsResponseDto {
+  @ApiProperty({ type: [AdminProfessionalVerificationItemDto] })
+  items: AdminProfessionalVerificationItemDto[];
+
+  @ApiProperty()
+  page: number;
+
+  @ApiProperty()
+  pageSize: number;
+
+  @ApiProperty()
+  total: number;
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Billing summary                                                            */
 /* -------------------------------------------------------------------------- */
 
@@ -154,7 +213,9 @@ export class AdminBillingTransactionDto {
   @ApiProperty()
   planName: string;
 
-  @ApiProperty({ description: 'Amount in the transaction currency, minor units (cents)' })
+  @ApiProperty({
+    description: 'Amount in the transaction currency, minor units (cents)',
+  })
   amountCents: number;
 
   @ApiProperty()
@@ -179,7 +240,9 @@ export class AdminBillingTransactionDto {
  * provider…" hints.
  */
 export class AdminBillingSummaryResponseDto {
-  @ApiProperty({ description: 'Always 0 until a payment provider is connected' })
+  @ApiProperty({
+    description: 'Always 0 until a payment provider is connected',
+  })
   totalRevenueCents: number;
 
   @ApiProperty({ example: '$0.00' })
@@ -194,7 +257,9 @@ export class AdminBillingSummaryResponseDto {
   })
   activeSubscriptions: number;
 
-  @ApiProperty({ description: 'Always 0 until a payment provider is connected' })
+  @ApiProperty({
+    description: 'Always 0 until a payment provider is connected',
+  })
   monthlyRecurringRevenueCents: number;
 
   @ApiProperty({ example: '$0.00' })

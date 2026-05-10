@@ -7,9 +7,21 @@ export const navItems = [
     href: '/#solutions',
     icon: 'chevronDown',
     items: [
-      { label: 'AI Doctor', href: '/dashboard/ai-doctor', icon: 'brainCircuit' },
-      { label: 'Find Nearby Facilities', href: '/dashboard/facility-locator', icon: 'heartPulse' },
-      { label: 'Second Opinion', href: '/dashboard/top-doctors', icon: 'userRoundSearch' },
+      {
+        label: 'AI Doctor',
+        href: '/dashboard/ai-doctor',
+        icon: 'brainCircuit',
+      },
+      {
+        label: 'Find Nearby Facilities',
+        href: '/dashboard/facility-locator',
+        icon: 'heartPulse',
+      },
+      {
+        label: 'Second Opinion',
+        href: '/dashboard/top-doctors',
+        icon: 'userRoundSearch',
+      },
     ],
   },
   { label: 'Pricing', href: '/pricing' },
@@ -29,17 +41,20 @@ export const navItems = [
 export const benefitItems = [
   {
     title: 'Personalized Health Insights',
-    description: 'Get AI-powered virtual health assistance tailored to your medical history and symptoms.',
+    description:
+      'Get AI-powered virtual health assistance tailored to your medical history and symptoms.',
     icon: 'heartPulse',
   },
   {
     title: 'Expert Second Opinions',
-    description: 'Validate your health insights with top US and European doctors to make more confident health decisions.',
+    description:
+      'Validate your health insights with top US and European doctors to make more confident health decisions.',
     icon: 'globe2',
   },
   {
     title: '24/7 Accessibility',
-    description: 'Access your AI health assistant anytime, anywhere, and in your native language.',
+    description:
+      'Access your AI health assistant anytime, anywhere, and in your native language.',
     icon: 'languages',
   },
 ];
@@ -48,7 +63,8 @@ export const showcaseItems = [
   {
     key: 'insights',
     title: 'Personalized Health Insights',
-    description: 'Get AI-powered virtual health assistance tailored to your medical history and symptoms.',
+    description:
+      'Get AI-powered virtual health assistance tailored to your medical history and symptoms.',
     ctaLabel: 'Chat With AI Doctor',
     href: '/dashboard/ai-doctor',
   },
@@ -126,7 +142,8 @@ export const faqItems = [
   },
   {
     question: 'Who can use this platform, patients only or also clinicians?',
-    answer: 'The landing page is designed primarily for patients, but parts of the platform can also support clinicians and care teams.',
+    answer:
+      'The landing page is designed primarily for patients, but parts of the platform can also support clinicians and care teams.',
   },
 ];
 
@@ -143,9 +160,7 @@ export const footerColumns = [
   },
   {
     title: 'Professional Solutions',
-    links: [
-      { label: 'Doctor Platform', href: '/dashboard' },
-    ],
+    links: [{ label: 'Doctor Platform', href: '/dashboard' }],
   },
   {
     title: 'Resources',

@@ -7,7 +7,7 @@ function asStringArray(bullets: Prisma.JsonValue): string[] {
   if (!Array.isArray(bullets)) {
     return [];
   }
-  return bullets.filter((x) => typeof x === 'string') as string[];
+  return bullets.filter((x) => typeof x === 'string');
 }
 
 export function toEducationResourceDto(

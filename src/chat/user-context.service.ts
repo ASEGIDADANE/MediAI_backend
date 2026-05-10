@@ -52,9 +52,7 @@ export class UserContextService {
     return out;
   }
 
-  private summarizeMedicalJson(
-    raw: Prisma.JsonValue | null,
-  ): string {
+  private summarizeMedicalJson(raw: Prisma.JsonValue | null): string {
     if (raw === null || raw === undefined) {
       return '';
     }

@@ -90,7 +90,9 @@ d('Admin v2 (e2e, RUN_ADMIN_E2E=1)', () => {
       page: 1,
       pageSize: 5,
     });
-    const row = (res.body.items as { email: string }[]).find((u) => u.email === email);
+    const row = (res.body.items as { email: string }[]).find(
+      (u) => u.email === email,
+    );
     expect(row).toMatchObject({
       email,
       hasProfile: false,

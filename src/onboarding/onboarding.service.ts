@@ -8,6 +8,7 @@ import {
   OnboardingMeasurementSystem,
   OnboardingSexAtBirth,
   OnboardingUserRole,
+  ProfessionalVerificationStatus,
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -17,7 +18,9 @@ import {
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { getOnboardingConfigSnapshot } from './onboarding.constants';
 
-export type OnboardingConfigPayload = ReturnType<typeof getOnboardingConfigSnapshot>;
+export type OnboardingConfigPayload = ReturnType<
+  typeof getOnboardingConfigSnapshot
+>;
 
 @Injectable()
 export class OnboardingService {
@@ -98,11 +101,21 @@ export class OnboardingService {
       };
     }
 
+    // Professional rows start in `pending` verification: the doctor must
+    // submit a complete verification packet and an admin must approve before
+    // they can use the dashboard. Personal rows leave `verificationStatus`
+    // null (= "not applicable").
+    const verificationStatus =
+      role === OnboardingUserRole.professional
+        ? ProfessionalVerificationStatus.pending
+        : null;
+
     const created = await this.prisma.userProfile.create({
       data: {
         userId,
         role,
         ...data,
+        verificationStatus,
       },
     });
 
@@ -130,9 +143,7 @@ export class OnboardingService {
     };
   }
 
-  private toPrismaRole(
-    r: CompleteOnboardingDto['role'],
-  ): OnboardingUserRole {
+  private toPrismaRole(r: CompleteOnboardingDto['role']): OnboardingUserRole {
     return r === 'professional'
       ? OnboardingUserRole.professional
       : OnboardingUserRole.personal;
@@ -153,5 +164,4 @@ export class OnboardingService {
     if (s === 'male') return OnboardingSexAtBirth.male;
     return OnboardingSexAtBirth.other;
   }
-
 }

@@ -57,19 +57,28 @@ export class CompleteOnboardingDto {
   @MaxLength(16)
   weight: string;
 
-  @ApiProperty({ required: false, description: 'Required when measurementSystem is imperial' })
+  @ApiProperty({
+    required: false,
+    description: 'Required when measurementSystem is imperial',
+  })
   @ValidateIf((o: CompleteOnboardingDto) => o.measurementSystem === 'imperial')
   @IsString()
   @IsNotEmpty()
   heightFeet?: string;
 
-  @ApiProperty({ required: false, description: 'Required when measurementSystem is imperial' })
+  @ApiProperty({
+    required: false,
+    description: 'Required when measurementSystem is imperial',
+  })
   @ValidateIf((o: CompleteOnboardingDto) => o.measurementSystem === 'imperial')
   @IsString()
   @IsNotEmpty()
   heightInches?: string;
 
-  @ApiProperty({ required: false, description: 'Required when measurementSystem is metric' })
+  @ApiProperty({
+    required: false,
+    description: 'Required when measurementSystem is metric',
+  })
   @ValidateIf((o: CompleteOnboardingDto) => o.measurementSystem === 'metric')
   @IsString()
   @IsNotEmpty()

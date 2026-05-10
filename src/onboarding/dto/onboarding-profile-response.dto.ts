@@ -13,7 +13,9 @@ export class DashboardAlignedProfileDto {
   @ApiProperty()
   region: string;
 
-  @ApiProperty({ description: 'Age as string to match MediAI dashboard localStorage shape' })
+  @ApiProperty({
+    description: 'Age as string to match MediAI dashboard localStorage shape',
+  })
   age: string;
 
   @ApiProperty({ enum: ['imperial', 'metric'] })

@@ -132,4 +132,6 @@ export class CreateTopDoctorBodyDto {
   sortOrder?: number;
 }
 
-export class PatchTopDoctorBodyDto extends PartialType(CreateTopDoctorBodyDto) {}
+export class PatchTopDoctorBodyDto extends PartialType(
+  CreateTopDoctorBodyDto,
+) {}

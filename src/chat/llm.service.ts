@@ -67,7 +67,9 @@ export class LlmService {
   /**
    * Yields token / word chunks; caller buffers full text for DB persistence.
    */
-  async *streamWithMessages(messages: LlmMessage[]): AsyncGenerator<string, void, void> {
+  async *streamWithMessages(
+    messages: LlmMessage[],
+  ): AsyncGenerator<string, void, void> {
     if (this.isDummyKey()) {
       const { text } = this.dummyResult(messages, messages.length > 2);
       for (const part of text.split(/(\s+)/)) {
@@ -90,7 +92,8 @@ export class LlmService {
   ): LlmResult {
     const rid = randomUUID().slice(0, 8);
     const nUser = messages.filter((m) => m.role === 'user').length;
-    const systemLen = messages.find((m) => m.role === 'system')?.content.length ?? 0;
+    const systemLen =
+      messages.find((m) => m.role === 'system')?.content.length ?? 0;
     const lastUser =
       [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
     const text =
@@ -133,7 +136,9 @@ export class LlmService {
     };
   }
 
-  private async geminiGenerateContent(messages: LlmMessage[]): Promise<LlmResult> {
+  private async geminiGenerateContent(
+    messages: LlmMessage[],
+  ): Promise<LlmResult> {
     const model = geminiChatModelId(this.config);
     const base = geminiGenerativeBase(this.config);
     const u = new URL(
@@ -164,11 +169,7 @@ export class LlmService {
     };
     const text =
       json.candidates
-        ?.map((c) =>
-          (c.content?.parts ?? [])
-            .map((p) => p.text ?? '')
-            .join(''),
-        )
+        ?.map((c) => (c.content?.parts ?? []).map((p) => p.text ?? '').join(''))
         .join('') ?? '';
     return {
       text: text.trim(),
@@ -251,14 +252,21 @@ export class LlmService {
 
   private async throwGeminiHttp(res: Response): Promise<never> {
     const raw = await res.text().catch(() => '');
-    this.log.error(`Gemini HTTP status=${res.status} body=${raw.slice(0, 400)}`);
+    this.log.error(
+      `Gemini HTTP status=${res.status} body=${raw.slice(0, 400)}`,
+    );
     if (res.status === 429) {
-      throw new HttpException('LLM rate limit, try later', HttpStatus.SERVICE_UNAVAILABLE);
+      throw new HttpException(
+        'LLM rate limit, try later',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
     }
     throw new HttpException('LLM request failed', HttpStatus.BAD_GATEWAY);
   }
 
-  private async openAiChatCompletionsJson(messages: LlmMessage[]): Promise<LlmResult> {
+  private async openAiChatCompletionsJson(
+    messages: LlmMessage[],
+  ): Promise<LlmResult> {
     const { res, model } = await this.openAiRequest(messages, false);
     if (!res.ok) {
       await this.throwLlmHttp(res);
@@ -331,16 +339,17 @@ export class LlmService {
   }
 
   private requestTimeoutMs(): number {
-    return Number(
-      this.config.get('LLM_REQUEST_TIMEOUT_MS', '30000') || 30_000,
-    );
+    return Number(this.config.get('LLM_REQUEST_TIMEOUT_MS', '30000') || 30_000);
   }
 
   private rethrowLlmNetError(e: unknown): never {
     const n = (e as { name?: string })?.name;
     if (n === 'AbortError' || n === 'TimeoutError') {
       this.log.warn('LLM request timed out');
-      throw new HttpException('LLM request timed out', HttpStatus.GATEWAY_TIMEOUT);
+      throw new HttpException(
+        'LLM request timed out',
+        HttpStatus.GATEWAY_TIMEOUT,
+      );
     }
     const msg = (e as Error)?.message?.slice(0, 200) ?? 'unknown';
     this.log.error(`LLM fetch failed: ${msg}`);
@@ -352,7 +361,8 @@ export class LlmService {
     const model =
       this.config.get('CHAT_LLM_MODEL', 'gpt-4o-mini') || 'gpt-4o-mini';
     const base = (
-      this.config.get('LLM_BASE_URL', 'https://api.openai.com/v1') || 'https://api.openai.com/v1'
+      this.config.get('LLM_BASE_URL', 'https://api.openai.com/v1') ||
+      'https://api.openai.com/v1'
     ).replace(/\/$/, '');
 
     const signal = AbortSignal.timeout(this.requestTimeoutMs());
@@ -386,7 +396,10 @@ export class LlmService {
     await res.text().catch(() => void 0);
     this.log.error(`LLM HTTP status=${res.status}`);
     if (res.status === 429) {
-      throw new HttpException('LLM rate limit, try later', HttpStatus.SERVICE_UNAVAILABLE);
+      throw new HttpException(
+        'LLM rate limit, try later',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
     }
     throw new HttpException('LLM request failed', HttpStatus.BAD_GATEWAY);
   }

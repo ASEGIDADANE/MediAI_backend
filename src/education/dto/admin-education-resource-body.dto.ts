@@ -1,4 +1,9 @@
-import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  OmitType,
+  PartialType,
+} from '@nestjs/swagger';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -64,7 +69,8 @@ export class PatchEducationResourceBodyDto extends PartialType(
 ) {
   @ApiPropertyOptional({
     nullable: true,
-    description: 'Omit to leave unchanged; send null to clear sort order in the database.',
+    description:
+      'Omit to leave unchanged; send null to clear sort order in the database.',
   })
   @IsOptional()
   @IsInt()

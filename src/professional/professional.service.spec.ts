@@ -58,7 +58,7 @@ async function buildService(
 describe('ProfessionalService', () => {
   it('listPatients throws Forbidden if caller is not professional', async () => {
     const prisma = makePrisma();
-    (prisma.userProfile.findUnique as jest.Mock).mockResolvedValue({
+    prisma.userProfile.findUnique.mockResolvedValue({
       role: OnboardingUserRole.personal,
     });
     const svc = await buildService(prisma);
@@ -70,10 +70,10 @@ describe('ProfessionalService', () => {
 
   it('listPatients excludes the caller and only returns personal users', async () => {
     const prisma = makePrisma();
-    (prisma.userProfile.findUnique as jest.Mock).mockResolvedValue({
+    prisma.userProfile.findUnique.mockResolvedValue({
       role: OnboardingUserRole.professional,
     });
-    (prisma.user.findMany as jest.Mock).mockResolvedValue([
+    prisma.user.findMany.mockResolvedValue([
       {
         id: PATIENT_ID,
         email: 'pat@example.com',
@@ -89,7 +89,7 @@ describe('ProfessionalService', () => {
         },
       },
     ]);
-    (prisma.user.count as jest.Mock).mockResolvedValue(1);
+    prisma.user.count.mockResolvedValue(1);
 
     const svc = await buildService(prisma);
     const res = await svc.listPatients(DOCTOR_ID, {});
@@ -104,7 +104,7 @@ describe('ProfessionalService', () => {
       lastActivityAt: null,
     });
 
-    const findMany = prisma.user.findMany as jest.Mock;
+    const findMany = prisma.user.findMany;
     const where = (findMany.mock.calls[0][0] as { where: unknown }).where as {
       id: { not: string };
       profile: { is: { role: string } };
@@ -115,10 +115,10 @@ describe('ProfessionalService', () => {
 
   it('sendMessage creates the thread on first send and persists the message', async () => {
     const prisma = makePrisma();
-    (prisma.userProfile.findUnique as jest.Mock).mockResolvedValue({
+    prisma.userProfile.findUnique.mockResolvedValue({
       role: OnboardingUserRole.professional,
     });
-    (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+    prisma.user.findUnique.mockResolvedValue({
       id: PATIENT_ID,
       email: 'pat@example.com',
       profile: {
@@ -126,13 +126,13 @@ describe('ProfessionalService', () => {
         preferredName: 'Sara',
       },
     });
-    (prisma.doctorPatientThread.findUnique as jest.Mock).mockResolvedValue(null);
-    (prisma.doctorPatientThread.create as jest.Mock).mockResolvedValue({
+    prisma.doctorPatientThread.findUnique.mockResolvedValue(null);
+    prisma.doctorPatientThread.create.mockResolvedValue({
       id: 'thread-1',
       doctorUserId: DOCTOR_ID,
       patientUserId: PATIENT_ID,
     });
-    (prisma.doctorPatientMessage.create as jest.Mock).mockResolvedValue({
+    prisma.doctorPatientMessage.create.mockResolvedValue({
       id: 'msg-1',
       threadId: 'thread-1',
       senderUserId: DOCTOR_ID,
@@ -155,10 +155,10 @@ describe('ProfessionalService', () => {
 
   it('getPatient rejects calling on a non-personal user', async () => {
     const prisma = makePrisma();
-    (prisma.userProfile.findUnique as jest.Mock).mockResolvedValue({
+    prisma.userProfile.findUnique.mockResolvedValue({
       role: OnboardingUserRole.professional,
     });
-    (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+    prisma.user.findUnique.mockResolvedValue({
       id: 'other-doctor',
       email: 'other@doctor.com',
       createdAt: new Date(),

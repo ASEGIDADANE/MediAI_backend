@@ -8,7 +8,10 @@ export class DashboardConfigController {
   constructor(private readonly config: DashboardConfigService) {}
 
   @Get('config')
-  @ApiOperation({ summary: 'Dashboard home cards & defaults (MediAI GET /api/dashboard/config)' })
+  @ApiOperation({
+    summary:
+      'Dashboard home cards & defaults (MediAI GET /api/dashboard/config)',
+  })
   @ApiResponse({ status: 200 })
   getConfig() {
     return this.config.getConfig();

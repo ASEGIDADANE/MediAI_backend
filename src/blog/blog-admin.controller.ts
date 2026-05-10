@@ -23,7 +23,10 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { UserAppRole } from '../generated/prisma/client';
-import { CurrentUser, type RequestUser } from '../auth/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type RequestUser,
+} from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import {
@@ -55,7 +58,8 @@ export class BlogAdminController {
   @Get('articles')
   @ApiOperation({
     summary: 'List articles (admin)',
-    description: 'Includes drafts and soft-deleted (unpublished) rows. Use `published` query to filter.',
+    description:
+      'Includes drafts and soft-deleted (unpublished) rows. Use `published` query to filter.',
   })
   @ApiResponse({ status: 200, type: BlogArticlesAdminListResponseDto })
   listAdmin(
@@ -113,7 +117,9 @@ export class BlogAdminController {
   }
 
   @Put('home')
-  @ApiOperation({ summary: 'Replace homepage curation (featured + section id lists)' })
+  @ApiOperation({
+    summary: 'Replace homepage curation (featured + section id lists)',
+  })
   @ApiResponse({ status: 200, type: BlogHomeResponseDto })
   putHome(
     @CurrentUser() _a: RequestUser,

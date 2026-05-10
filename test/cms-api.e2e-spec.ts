@@ -30,7 +30,9 @@ describe('MediAI CMS & chat routes (e2e)', () => {
   });
 
   it('GET /api/landing includes required keys', async () => {
-    const res = await request(app.getHttpServer()).get('/api/landing').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/api/landing')
+      .expect(200);
     expect(res.body).toMatchObject({
       navItems: expect.any(Array),
       heroHighlights: expect.any(Array),
@@ -44,7 +46,9 @@ describe('MediAI CMS & chat routes (e2e)', () => {
   });
 
   it('GET /api/onboarding/config includes professional option arrays', async () => {
-    const res = await request(app.getHttpServer()).get('/api/onboarding/config').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/api/onboarding/config')
+      .expect(200);
     expect(res.body).toMatchObject({
       userRoleOptions: expect.any(Array),
       professionalTitleOptions: expect.any(Array),
@@ -58,7 +62,9 @@ describe('MediAI CMS & chat routes (e2e)', () => {
   });
 
   it('GET /api/dashboard/config', async () => {
-    const res = await request(app.getHttpServer()).get('/api/dashboard/config').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/api/dashboard/config')
+      .expect(200);
     expect(res.body).toMatchObject({
       defaultDashboardProfile: expect.any(Object),
       dashboardCards: expect.any(Array),
@@ -68,7 +74,9 @@ describe('MediAI CMS & chat routes (e2e)', () => {
   });
 
   it('GET /api/chat/config', async () => {
-    const res = await request(app.getHttpServer()).get('/api/chat/config').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/api/chat/config')
+      .expect(200);
     expect(res.body).toMatchObject({
       doctorTypeOptions: expect.any(Array),
       chatHistoryItems: expect.any(Array),
@@ -77,7 +85,9 @@ describe('MediAI CMS & chat routes (e2e)', () => {
   });
 
   it('GET /api/ai-doctor/config', async () => {
-    const res = await request(app.getHttpServer()).get('/api/ai-doctor/config').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/api/ai-doctor/config')
+      .expect(200);
     expect(res.body).toMatchObject({
       aiDoctorBenefits: expect.any(Array),
       medicalHistorySteps: expect.any(Array),
@@ -111,7 +121,10 @@ describe('MediAI CMS & chat routes (e2e)', () => {
   });
 
   it('POST /api/chat/report-issue 400 when message missing or blank', async () => {
-    await request(app.getHttpServer()).post('/api/chat/report-issue').send({}).expect(400);
+    await request(app.getHttpServer())
+      .post('/api/chat/report-issue')
+      .send({})
+      .expect(400);
     await request(app.getHttpServer())
       .post('/api/chat/report-issue')
       .send({ message: '   ' })
@@ -119,13 +132,17 @@ describe('MediAI CMS & chat routes (e2e)', () => {
   });
 
   it('GET /api/education/resources returns list envelope', async () => {
-    const res = await request(app.getHttpServer()).get('/api/education/resources').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/api/education/resources')
+      .expect(200);
     expect(res.body).toMatchObject({
       items: expect.any(Array),
     });
   });
 
   it('GET /api/education/resources/:slug 404 for invalid slug', () => {
-    return request(app.getHttpServer()).get('/api/education/resources/not-a-valid-slug').expect(404);
+    return request(app.getHttpServer())
+      .get('/api/education/resources/not-a-valid-slug')
+      .expect(404);
   });
 });

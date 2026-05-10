@@ -9,7 +9,8 @@ export class PostGeneralMessageDto {
   message: string;
 
   @ApiPropertyOptional({
-    description: 'Client-generated id to continue the same general thread (not PHI)',
+    description:
+      'Client-generated id to continue the same general thread (not PHI)',
   })
   @IsOptional()
   @IsString()

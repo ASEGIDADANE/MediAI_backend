@@ -1,8 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class PostPersonalMessageDto {
-  @ApiProperty({ example: 'I have a headache in the morning.', maxLength: 8000 })
+  @ApiProperty({
+    example: 'I have a headache in the morning.',
+    maxLength: 8000,
+  })
   @IsString()
   @MinLength(1)
   @MaxLength(8000)

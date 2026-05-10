@@ -8,7 +8,8 @@ export class ListPatientMessagesQueryDto {
   @ApiPropertyOptional({
     default: 50,
     maximum: MAX_LIMIT,
-    description: 'Maximum messages to return (newest first if `before`, otherwise oldest first).',
+    description:
+      'Maximum messages to return (newest first if `before`, otherwise oldest first).',
   })
   @IsOptional()
   @Type(() => Number)

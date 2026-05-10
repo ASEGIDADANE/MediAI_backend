@@ -1,12 +1,7 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ParseHealthFacilityIdPipe } from './parse-health-facility-id.pipe';
 import { Throttle } from '@nestjs/throttler';
-import {
-  ApiOperation,
-  ApiParam,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { HealthFacilitiesQueryDto } from './dto/health-facilities-query.dto';
 import {
   HealthFacilitiesListResponseDto,
@@ -22,7 +17,8 @@ export class HealthFacilitiesController {
 
   @Get()
   @ApiOperation({
-    summary: 'List published healthcare facilities (hospital, pharmacy, clinic)',
+    summary:
+      'List published healthcare facilities (hospital, pharmacy, clinic)',
     description:
       'Matches MediAI dashboard facility locator. Optional `q` searches name and address (max 120 chars).',
   })
@@ -37,7 +33,8 @@ export class HealthFacilitiesController {
   @ApiOperation({ summary: 'Get one published facility by id (e.g. fac-001)' })
   @ApiParam({
     name: 'id',
-    description: 'Stable id from list (e.g. fac-001); must match `fac-` + letters, digits, or hyphens, max 64 chars',
+    description:
+      'Stable id from list (e.g. fac-001); must match `fac-` + letters, digits, or hyphens, max 64 chars',
   })
   @ApiResponse({ status: 200, type: HealthcareFacilityDto })
   @ApiResponse({

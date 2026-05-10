@@ -71,7 +71,9 @@ export class AuthService {
     });
   }
 
-  async completeGoogleOAuth(code: string): Promise<{ accessToken: string; user: AuthUserView }> {
+  async completeGoogleOAuth(
+    code: string,
+  ): Promise<{ accessToken: string; user: AuthUserView }> {
     const client = this.getGoogleClient();
     if (!client) {
       throw new ServiceUnavailableException('Google OAuth is not configured');
@@ -82,7 +84,9 @@ export class AuthService {
       const result = await client.getToken(code);
       tokens = result.tokens;
     } catch {
-      throw new UnauthorizedException('Invalid or expired Google authorization code');
+      throw new UnauthorizedException(
+        'Invalid or expired Google authorization code',
+      );
     }
 
     if (!tokens.access_token) {
@@ -134,7 +138,11 @@ export class AuthService {
       }
     }
 
-    const accessToken = await this.signAccessToken(user.id, user.email, user.appRole);
+    const accessToken = await this.signAccessToken(
+      user.id,
+      user.email,
+      user.appRole,
+    );
     return {
       accessToken,
       user: { id: user.id, email: user.email, appRole: user.appRole },
@@ -149,7 +157,9 @@ export class AuthService {
     return this.jwt.signAsync({ sub: userId, email, appRole });
   }
 
-  async register(dto: RegisterDto): Promise<{ accessToken: string; user: AuthUserView }> {
+  async register(
+    dto: RegisterDto,
+  ): Promise<{ accessToken: string; user: AuthUserView }> {
     const email = this.normalizeEmail(dto.email);
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -161,14 +171,20 @@ export class AuthService {
       data: { email, passwordHash },
     });
 
-    const accessToken = await this.signAccessToken(user.id, user.email, user.appRole);
+    const accessToken = await this.signAccessToken(
+      user.id,
+      user.email,
+      user.appRole,
+    );
     return {
       accessToken,
       user: { id: user.id, email: user.email, appRole: user.appRole },
     };
   }
 
-  async login(dto: LoginDto): Promise<{ accessToken: string; user: AuthUserView }> {
+  async login(
+    dto: LoginDto,
+  ): Promise<{ accessToken: string; user: AuthUserView }> {
     const email = this.normalizeEmail(dto.email);
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user?.passwordHash) {
@@ -180,7 +196,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    const accessToken = await this.signAccessToken(user.id, user.email, user.appRole);
+    const accessToken = await this.signAccessToken(
+      user.id,
+      user.email,
+      user.appRole,
+    );
     return {
       accessToken,
       user: { id: user.id, email: user.email, appRole: user.appRole },
@@ -206,7 +226,9 @@ export class AuthService {
       data: { userId: user.id, tokenHash, expiresAt },
     });
 
-    const frontend = this.config.get<string>('FRONTEND_URL', 'http://localhost:3000').replace(/\/$/, '');
+    const frontend = this.config
+      .get<string>('FRONTEND_URL', 'http://localhost:3000')
+      .replace(/\/$/, '');
     const resetUrl = `${frontend}/reset-password?token=${encodeURIComponent(raw)}`;
 
     await this.email.sendPasswordResetLink(email, resetUrl);

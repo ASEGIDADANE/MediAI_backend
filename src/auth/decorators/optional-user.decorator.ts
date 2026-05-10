@@ -6,9 +6,7 @@ import type { RequestUser } from './current-user.decorator';
  */
 export const OptionalUser = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): RequestUser | undefined => {
-    const request = ctx
-      .switchToHttp()
-      .getRequest<{ user?: RequestUser }>();
+    const request = ctx.switchToHttp().getRequest<{ user?: RequestUser }>();
     return request.user;
   },
 );

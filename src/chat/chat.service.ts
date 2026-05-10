@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { getChatConfigSnapshot } from '../config/chat.snapshot';
-import { chatReplyAuthor, getReplyForMode, type ChatMode } from '../config/chat-reply.util';
+import {
+  chatReplyAuthor,
+  getReplyForMode,
+  type ChatMode,
+} from '../config/chat-reply.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { RagService } from './rag.service';
 

@@ -20,10 +20,16 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { UserAppRole } from '../generated/prisma/client';
-import { CurrentUser, type RequestUser } from '../auth/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type RequestUser,
+} from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { CreateTopDoctorBodyDto, PatchTopDoctorBodyDto } from './dto/admin-top-doctor-body.dto';
+import {
+  CreateTopDoctorBodyDto,
+  PatchTopDoctorBodyDto,
+} from './dto/admin-top-doctor-body.dto';
 import { TopDoctorDto } from './dto/top-doctor-response.dto';
 import { TopDoctorsService } from './top-doctors.service';
 
@@ -48,7 +54,10 @@ export class AdminTopDoctorsController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Partial update (admin). Soft-hide with published: false via body.' })
+  @ApiOperation({
+    summary:
+      'Partial update (admin). Soft-hide with published: false via body.',
+  })
   @ApiParam({ name: 'id', format: 'uuid' })
   @ApiResponse({ status: 200, type: TopDoctorDto })
   @ApiResponse({ status: 404, description: 'Not found' })

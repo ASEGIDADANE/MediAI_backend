@@ -52,12 +52,16 @@ export class ProfessionalController {
 
   @Get('patients')
   @ApiOperation({
-    summary: 'List registered patients (personal-role users) for the calling doctor',
+    summary:
+      'List registered patients (personal-role users) for the calling doctor',
     description:
       'Returns all users with `UserProfile.role === personal` (excluding the caller). Caller must be `professional`. Supports paging and free-text search by name/email.',
   })
   @ApiResponse({ status: 200, type: ListPatientsResponseDto })
-  @ApiResponse({ status: 403, description: 'Caller is not a professional user' })
+  @ApiResponse({
+    status: 403,
+    description: 'Caller is not a professional user',
+  })
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   listPatients(
     @CurrentUser() user: RequestUser,
@@ -68,11 +72,15 @@ export class ProfessionalController {
 
   @Get('patients/:patientId')
   @ApiOperation({
-    summary: 'Fetch a single patient with their dashboard profile and medical history',
+    summary:
+      'Fetch a single patient with their dashboard profile and medical history',
   })
   @ApiParam({ name: 'patientId', description: 'Patient User.id (UUID)' })
   @ApiResponse({ status: 200, type: PatientDetailDto })
-  @ApiResponse({ status: 403, description: 'Caller is not a professional user' })
+  @ApiResponse({
+    status: 403,
+    description: 'Caller is not a professional user',
+  })
   @ApiResponse({ status: 404, description: 'Patient not found' })
   getPatient(
     @CurrentUser() user: RequestUser,
@@ -89,7 +97,10 @@ export class ProfessionalController {
   @ApiParam({ name: 'patientId', description: 'Patient User.id (UUID)' })
   @ApiResponse({ status: 200, type: PatientDetailDto })
   @ApiResponse({ status: 400, description: 'Invalid patch body' })
-  @ApiResponse({ status: 403, description: 'Caller is not a professional user' })
+  @ApiResponse({
+    status: 403,
+    description: 'Caller is not a professional user',
+  })
   @ApiResponse({ status: 404, description: 'Patient not found' })
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   patchPatientProfile(
@@ -113,7 +124,10 @@ export class ProfessionalController {
   @ApiParam({ name: 'patientId', description: 'Patient User.id (UUID)' })
   @ApiResponse({ status: 200, type: PatientDetailDto })
   @ApiResponse({ status: 400, description: 'Invalid medical-history body' })
-  @ApiResponse({ status: 403, description: 'Caller is not a professional user' })
+  @ApiResponse({
+    status: 403,
+    description: 'Caller is not a professional user',
+  })
   @ApiResponse({ status: 404, description: 'Patient not found' })
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   putPatientMedicalHistory(
@@ -132,13 +146,17 @@ export class ProfessionalController {
 
   @Get('patients/:patientId/messages')
   @ApiOperation({
-    summary: 'List messages in the doctor↔patient thread (creates the thread on first call)',
+    summary:
+      'List messages in the doctor↔patient thread (creates the thread on first call)',
     description:
       'Inbound (patient → doctor) messages are marked as read as a side-effect of this call.',
   })
   @ApiParam({ name: 'patientId', description: 'Patient User.id (UUID)' })
   @ApiResponse({ status: 200, type: PatientMessageThreadDto })
-  @ApiResponse({ status: 403, description: 'Caller is not a professional user' })
+  @ApiResponse({
+    status: 403,
+    description: 'Caller is not a professional user',
+  })
   @ApiResponse({ status: 404, description: 'Patient not found' })
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
   listMessages(
@@ -159,7 +177,10 @@ export class ProfessionalController {
   @ApiParam({ name: 'patientId', description: 'Patient User.id (UUID)' })
   @ApiResponse({ status: 201, type: PatientMessageDto })
   @ApiResponse({ status: 400, description: 'Invalid body' })
-  @ApiResponse({ status: 403, description: 'Caller is not a professional user' })
+  @ApiResponse({
+    status: 403,
+    description: 'Caller is not a professional user',
+  })
   @ApiResponse({ status: 404, description: 'Patient not found' })
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   sendMessage(

@@ -1,5 +1,13 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ChatMessageRole, ChatThreadKind, Prisma } from '../generated/prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  ChatMessageRole,
+  ChatThreadKind,
+  Prisma,
+} from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 const PREVIEW_MAX = 200;
@@ -77,9 +85,7 @@ export class ChatReadService {
           if (!c) {
             return undefined;
           }
-          return c.length > PREVIEW_MAX
-            ? `${c.slice(0, PREVIEW_MAX - 1)}…`
-            : c;
+          return c.length > PREVIEW_MAX ? `${c.slice(0, PREVIEW_MAX - 1)}…` : c;
         })(),
       })),
     };
@@ -116,7 +122,9 @@ export class ChatReadService {
         where: { id: beforeMessageId, conversationId: conv.id },
       });
       if (!m) {
-        throw new BadRequestException('Invalid `before` cursor (message not in conversation)');
+        throw new BadRequestException(
+          'Invalid `before` cursor (message not in conversation)',
+        );
       }
       beforeDate = m.createdAt;
     }
@@ -139,14 +147,12 @@ export class ChatReadService {
     const slice = hasMore ? rows.slice(0, take) : rows;
     return {
       hasMore,
-      items: slice
-        .reverse()
-        .map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          createdAt: m.createdAt.toISOString(),
-        })),
+      items: slice.reverse().map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        createdAt: m.createdAt.toISOString(),
+      })),
     };
   }
 }

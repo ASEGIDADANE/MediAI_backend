@@ -55,7 +55,12 @@ export class ThreadDetailDto {
   messages: ThreadMessageDto[];
 }
 
-/** One row in the patient's "Messages" inbox. */
+/**
+ * One row in the calling user's "Messages" inbox. Both doctor- and patient-side
+ * inboxes use this same shape so the dashboard navbar / list components can be
+ * shared. The caller's role determines which "side" they are; `unreadCount` is
+ * always counted from the caller's perspective (messages addressed to them).
+ */
 export class ThreadSummaryDto {
   @ApiProperty()
   threadId: string;
@@ -68,6 +73,12 @@ export class ThreadSummaryDto {
 
   @ApiPropertyOptional({ nullable: true })
   doctorSpecialty: string | null;
+
+  @ApiProperty()
+  patientUserId: string;
+
+  @ApiProperty()
+  patientName: string;
 
   @ApiProperty({ description: 'ISO timestamp of last activity in the thread.' })
   lastMessageAt: string;
@@ -87,7 +98,7 @@ export class ThreadSummaryDto {
 
   @ApiProperty({
     description:
-      'Number of doctor → patient messages that have not been read by the patient yet.',
+      'Number of inbound messages (sent by the other participant) that the caller has not read yet.',
   })
   unreadCount: number;
 }
@@ -95,4 +106,16 @@ export class ThreadSummaryDto {
 export class ThreadListDto {
   @ApiProperty({ type: [ThreadSummaryDto] })
   items: ThreadSummaryDto[];
+}
+
+/**
+ * Aggregated unread count across every thread the caller participates in.
+ * Used by the dashboard navbar message-icon badge.
+ */
+export class UnreadCountDto {
+  @ApiProperty({
+    description:
+      'Total number of unread inbound messages addressed to the caller across all their threads.',
+  })
+  count: number;
 }

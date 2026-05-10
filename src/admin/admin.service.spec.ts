@@ -21,10 +21,7 @@ describe('AdminService', () => {
       supportReport: { count: jest.fn().mockResolvedValue(4) },
     };
     const mod = await Test.createTestingModule({
-      providers: [
-        AdminService,
-        { provide: PrismaService, useValue: prisma },
-      ],
+      providers: [AdminService, { provide: PrismaService, useValue: prisma }],
     }).compile();
     const svc = mod.get(AdminService);
     const s = await svc.getSummary();
@@ -87,10 +84,7 @@ describe('AdminService', () => {
       user: { findMany, count },
     };
     const mod = await Test.createTestingModule({
-      providers: [
-        AdminService,
-        { provide: PrismaService, useValue: prisma },
-      ],
+      providers: [AdminService, { provide: PrismaService, useValue: prisma }],
     }).compile();
     const svc = mod.get(AdminService);
     const res = await svc.listUsers({});
@@ -116,8 +110,16 @@ describe('AdminService', () => {
   it('getRecentActivity merges signups, audits, and support reports newest first', async () => {
     const t = (iso: string) => new Date(iso);
     const userFindMany = jest.fn().mockResolvedValue([
-      { id: 'u1', email: 'alice@example.com', createdAt: t('2025-01-03T00:00:00.000Z') },
-      { id: 'u2', email: 'bob@example.com', createdAt: t('2025-01-01T00:00:00.000Z') },
+      {
+        id: 'u1',
+        email: 'alice@example.com',
+        createdAt: t('2025-01-03T00:00:00.000Z'),
+      },
+      {
+        id: 'u2',
+        email: 'bob@example.com',
+        createdAt: t('2025-01-01T00:00:00.000Z'),
+      },
     ]);
     const auditFindMany = jest.fn().mockResolvedValue([
       {
@@ -147,10 +149,7 @@ describe('AdminService', () => {
       supportReport: { findMany: supportFindMany },
     };
     const mod = await Test.createTestingModule({
-      providers: [
-        AdminService,
-        { provide: PrismaService, useValue: prisma },
-      ],
+      providers: [AdminService, { provide: PrismaService, useValue: prisma }],
     }).compile();
     const svc = mod.get(AdminService);
     const { items } = await svc.getRecentActivity({ limit: 10 });

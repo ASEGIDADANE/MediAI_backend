@@ -1,8 +1,5 @@
 import type { BlogArticle } from '../generated/prisma/client';
-import {
-  formatBlogDateFromPublishedAt,
-  toBlogArticleDto,
-} from './blog.mapper';
+import { formatBlogDateFromPublishedAt, toBlogArticleDto } from './blog.mapper';
 
 describe('blog.mapper', () => {
   it('formatBlogDateFromPublishedAt (UTC)', () => {

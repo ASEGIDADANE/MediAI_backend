@@ -11,7 +11,8 @@ export class PatientSummaryDto {
   email: string;
 
   @ApiProperty({
-    description: 'Numeric age in years, expressed as string for parity with DashboardProfile',
+    description:
+      'Numeric age in years, expressed as string for parity with DashboardProfile',
   })
   age: string;
 
@@ -21,14 +22,17 @@ export class PatientSummaryDto {
   @ApiPropertyOptional()
   region?: string;
 
-  @ApiProperty({ description: 'True if the patient has saved any medical history' })
+  @ApiProperty({
+    description: 'True if the patient has saved any medical history',
+  })
   hasMedicalHistory: boolean;
 
   @ApiProperty({ description: 'Onboarding completion timestamp (ISO 8601)' })
   registeredAt: string;
 
   @ApiProperty({
-    description: 'Latest doctor↔patient activity (last message or thread updatedAt)',
+    description:
+      'Latest doctor↔patient activity (last message or thread updatedAt)',
     nullable: true,
   })
   lastActivityAt: string | null;

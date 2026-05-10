@@ -1,11 +1,6 @@
 import { Controller, Get, Param } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import {
-  ApiOperation,
-  ApiParam,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   EducationResourceResponseDto,
   EducationResourcesListResponseDto,
@@ -19,7 +14,9 @@ export class EducationController {
   constructor(private readonly education: EducationService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List published help / education pages (MediAI resource pages)' })
+  @ApiOperation({
+    summary: 'List published help / education pages (MediAI resource pages)',
+  })
   @ApiResponse({ status: 200, type: EducationResourcesListResponseDto })
   list(): Promise<EducationResourcesListResponseDto> {
     return this.education.listPublic();

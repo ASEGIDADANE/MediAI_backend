@@ -7,6 +7,9 @@ export class UserPublicDto {
   @ApiProperty({ format: 'email' })
   email: string;
 
-  @ApiProperty({ enum: ['user', 'admin'], description: 'Application role (JWT claim + profile)' })
+  @ApiProperty({
+    enum: ['user', 'admin'],
+    description: 'Application role (JWT claim + profile)',
+  })
   appRole: 'user' | 'admin';
 }

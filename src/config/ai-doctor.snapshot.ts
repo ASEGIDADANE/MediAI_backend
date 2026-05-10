@@ -118,7 +118,8 @@ export const medicalHistorySteps = [
     sectionTitle: 'Medical History',
     stepKind: 'yes-no-checklist',
     options: allergyOptions,
-    placeholder: 'e.g. Peanut allergy, Penicillin allergy, tree and grass pollen',
+    placeholder:
+      'e.g. Peanut allergy, Penicillin allergy, tree and grass pollen',
   },
   {
     id: 'surgical-history',

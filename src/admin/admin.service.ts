@@ -1,13 +1,26 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   AccountAuditAction,
   OnboardingUserRole,
+  Prisma,
+  ProfessionalVerificationStatus,
   UserAppRole,
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { takeSkipFromPagination } from './dto/admin-pagination-query.dto';
+import type {
+  AdminProfessionalVerificationsQueryDto,
+  AdminVerificationFilter,
+} from './dto/admin-professional-verifications-query.dto';
 import { clampActivityLimit } from './dto/admin-recent-activity-query.dto';
-import type { AdminActivityType } from './dto/admin-response.dtos';
+import type {
+  AdminActivityType,
+  AdminVerificationStatus,
+} from './dto/admin-response.dtos';
 import type { AdminSupportReportsQueryDto } from './dto/admin-support-reports-query.dto';
 import type { AdminUsersQueryDto } from './dto/admin-users-query.dto';
 
@@ -109,9 +122,9 @@ export class AdminService {
       updatedAt: r.updatedAt.toISOString(),
       hasProfile: r.profile !== null,
       profileRole: r.profile
-        ? (r.profile.role === OnboardingUserRole.personal
-            ? ('personal' as const)
-            : ('professional' as const))
+        ? r.profile.role === OnboardingUserRole.personal
+          ? ('personal' as const)
+          : ('professional' as const)
         : null,
       preferredName: r.profile?.preferredName ?? null,
       specialty: extractSpecialty(r.profile),
@@ -125,9 +138,7 @@ export class AdminService {
       dto.page,
       dto.pageSize,
     );
-    const where = dto.userId
-      ? { userId: dto.userId as string }
-      : {};
+    const where = dto.userId ? { userId: dto.userId } : {};
 
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.supportReport.findMany({
@@ -263,6 +274,181 @@ export class AdminService {
       adminCount,
       last24hRegistrations,
     };
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Doctor verification queue                                          */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Build the Prisma `where` clause for the verification queue from the
+   * admin-supplied `status` filter. `awaiting` is the operationally useful
+   * default — only professionals who actually clicked "Submit for review"
+   * and are still pending.
+   */
+  private verificationFilterToWhere(
+    filter: AdminVerificationFilter,
+  ): Prisma.UserProfileWhereInput {
+    const base: Prisma.UserProfileWhereInput = {
+      role: OnboardingUserRole.professional,
+    };
+    switch (filter) {
+      case 'all':
+        return base;
+      case 'verified':
+        return {
+          ...base,
+          verificationStatus: ProfessionalVerificationStatus.verified,
+        };
+      case 'rejected':
+        return {
+          ...base,
+          verificationStatus: ProfessionalVerificationStatus.rejected,
+        };
+      case 'pending':
+        return {
+          ...base,
+          verificationStatus: ProfessionalVerificationStatus.pending,
+        };
+      case 'awaiting':
+      default:
+        return {
+          ...base,
+          verificationStatus: ProfessionalVerificationStatus.pending,
+          verificationSubmittedAt: { not: null },
+        };
+    }
+  }
+
+  async listProfessionalVerifications(
+    dto: AdminProfessionalVerificationsQueryDto,
+  ) {
+    const { take, skip, page, pageSize } = takeSkipFromPagination(
+      dto.page,
+      dto.pageSize,
+    );
+    const where = this.verificationFilterToWhere(dto.status ?? 'awaiting');
+
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.userProfile.findMany({
+        where,
+        // Awaiting submissions go oldest-first so the admin works the queue
+        // FIFO; everything else newest-first by creation time.
+        orderBy:
+          (dto.status ?? 'awaiting') === 'awaiting'
+            ? [{ verificationSubmittedAt: 'asc' }]
+            : [{ verificationReviewedAt: 'desc' }, { createdAt: 'desc' }],
+        take,
+        skip,
+        select: {
+          userId: true,
+          professionalProfile: true,
+          verificationStatus: true,
+          verificationSubmittedAt: true,
+          verificationReviewedAt: true,
+          verificationReviewedBy: true,
+          verificationNotes: true,
+          createdAt: true,
+          user: { select: { email: true } },
+        },
+      }),
+      this.prisma.userProfile.count({ where }),
+    ]);
+
+    const items = rows.map((r) => ({
+      userId: r.userId,
+      email: r.user?.email ?? '',
+      status: this.toApiStatus(r.verificationStatus),
+      submittedAt: r.verificationSubmittedAt
+        ? r.verificationSubmittedAt.toISOString()
+        : null,
+      reviewedAt: r.verificationReviewedAt
+        ? r.verificationReviewedAt.toISOString()
+        : null,
+      reviewedBy: r.verificationReviewedBy ?? null,
+      notes: r.verificationNotes ?? null,
+      createdAt: r.createdAt.toISOString(),
+      professionalProfile:
+        r.professionalProfile &&
+        typeof r.professionalProfile === 'object' &&
+        !Array.isArray(r.professionalProfile)
+          ? (r.professionalProfile as Record<string, unknown>)
+          : {},
+    }));
+
+    return { items, page, pageSize, total };
+  }
+
+  async approveProfessional(targetUserId: string, adminUserId: string) {
+    const profile = await this.prisma.userProfile.findUnique({
+      where: { userId: targetUserId },
+    });
+    if (!profile) {
+      throw new NotFoundException('Professional profile not found.');
+    }
+    if (profile.role !== OnboardingUserRole.professional) {
+      throw new BadRequestException(
+        'This account is not a professional account.',
+      );
+    }
+
+    await this.prisma.userProfile.update({
+      where: { userId: targetUserId },
+      data: {
+        verificationStatus: ProfessionalVerificationStatus.verified,
+        verificationReviewedAt: new Date(),
+        verificationReviewedBy: adminUserId,
+        verificationNotes: null,
+      },
+    });
+
+    return { ok: true };
+  }
+
+  async rejectProfessional(
+    targetUserId: string,
+    adminUserId: string,
+    notes: string,
+  ) {
+    const profile = await this.prisma.userProfile.findUnique({
+      where: { userId: targetUserId },
+    });
+    if (!profile) {
+      throw new NotFoundException('Professional profile not found.');
+    }
+    if (profile.role !== OnboardingUserRole.professional) {
+      throw new BadRequestException(
+        'This account is not a professional account.',
+      );
+    }
+
+    await this.prisma.userProfile.update({
+      where: { userId: targetUserId },
+      data: {
+        verificationStatus: ProfessionalVerificationStatus.rejected,
+        verificationReviewedAt: new Date(),
+        verificationReviewedBy: adminUserId,
+        verificationNotes: notes.trim().slice(0, 2000),
+        // Keep submittedAt as a record of *when* they applied; the doctor
+        // re-submit flow will overwrite it with a fresh timestamp.
+      },
+    });
+
+    return { ok: true };
+  }
+
+  private toApiStatus(
+    s: ProfessionalVerificationStatus | null,
+  ): AdminVerificationStatus {
+    switch (s) {
+      case ProfessionalVerificationStatus.verified:
+        return 'verified';
+      case ProfessionalVerificationStatus.rejected:
+        return 'rejected';
+      case ProfessionalVerificationStatus.pending:
+      default:
+        return 'pending';
+    }
   }
 
   /**

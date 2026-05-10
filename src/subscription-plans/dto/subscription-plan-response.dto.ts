@@ -33,7 +33,9 @@ export class SubscriptionPlanResponseDto {
   @ApiProperty({ type: [String], description: 'Free-form bullet copy' })
   features!: string[];
 
-  @ApiProperty({ description: 'When false the tier is hidden from the public pricing page' })
+  @ApiProperty({
+    description: 'When false the tier is hidden from the public pricing page',
+  })
   active!: boolean;
 
   @ApiProperty()

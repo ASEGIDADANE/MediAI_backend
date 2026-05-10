@@ -14,6 +14,10 @@ const THREAD_ID = 'thr-1';
 function makePrisma() {
   return {
     $transaction: (ops: Promise<unknown>[]) => Promise.all(ops),
+    userProfile: {
+      // Default to patient role; tests for doctor inbox override this.
+      findUnique: jest.fn().mockResolvedValue({ role: 'personal' }),
+    },
     doctorPatientThread: {
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn(),
@@ -21,6 +25,7 @@ function makePrisma() {
     },
     doctorPatientMessage: {
       findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
       create: jest.fn(),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
@@ -29,10 +34,7 @@ function makePrisma() {
 
 async function buildService(prisma: ReturnType<typeof makePrisma>) {
   const mod = await Test.createTestingModule({
-    providers: [
-      MessagesService,
-      { provide: PrismaService, useValue: prisma },
-    ],
+    providers: [MessagesService, { provide: PrismaService, useValue: prisma }],
   }).compile();
   return mod.get(MessagesService);
 }
@@ -43,20 +45,35 @@ function doctorRow(overrides: Record<string, unknown> = {}) {
     email: 'doc@example.com',
     profile: {
       preferredName: 'Dr Hadiya',
-      professionalProfile: { fullName: 'Hadiya M., MD', specialty: 'Cardiology' },
+      professionalProfile: {
+        fullName: 'Hadiya M., MD',
+        specialty: 'Cardiology',
+      },
     },
     ...overrides,
   };
 }
 
+function patientRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: PATIENT_ID,
+    email: 'pat@example.com',
+    profile: { preferredName: 'Kiyar Ali' },
+    ...overrides,
+  };
+}
+
 describe('MessagesService', () => {
-  it('listThreads returns threads with last preview and unread count', async () => {
+  it('listThreads (patient) filters by patientUserId and excludes empty threads', async () => {
     const prisma = makePrisma();
-    (prisma.doctorPatientThread.findMany as jest.Mock).mockResolvedValue([
+    prisma.doctorPatientThread.findMany.mockResolvedValue([
       {
         id: THREAD_ID,
+        doctorUserId: DOCTOR_ID,
+        patientUserId: PATIENT_ID,
         updatedAt: new Date('2026-05-01T10:00:00Z'),
         doctor: doctorRow(),
+        patient: patientRow(),
         messages: [
           {
             id: 'm1',
@@ -72,12 +89,23 @@ describe('MessagesService', () => {
     const svc = await buildService(prisma);
     const out = await svc.listThreads(PATIENT_ID);
 
+    expect(prisma.doctorPatientThread.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          patientUserId: PATIENT_ID,
+          messages: { some: {} },
+        },
+      }),
+    );
+
     expect(out.items).toHaveLength(1);
     expect(out.items[0]).toMatchObject({
       threadId: THREAD_ID,
       doctorUserId: DOCTOR_ID,
       doctorName: 'Hadiya M., MD',
       doctorSpecialty: 'Cardiology',
+      patientUserId: PATIENT_ID,
+      patientName: 'Kiyar Ali',
       lastMessageAt: '2026-05-01T10:00:00.000Z',
       lastMessageSender: 'doctor',
       unreadCount: 2,
@@ -85,13 +113,81 @@ describe('MessagesService', () => {
     expect(out.items[0].lastMessagePreview).toContain('Hello');
   });
 
-  it('listThreads marks the patient as the last sender when they wrote it', async () => {
+  it('listThreads (doctor) filters by doctorUserId so each doctor only sees their own threads', async () => {
     const prisma = makePrisma();
-    (prisma.doctorPatientThread.findMany as jest.Mock).mockResolvedValue([
+    prisma.userProfile.findUnique.mockResolvedValue({
+      role: 'professional',
+    });
+    prisma.doctorPatientThread.findMany.mockResolvedValue([
       {
         id: THREAD_ID,
+        doctorUserId: DOCTOR_ID,
+        patientUserId: PATIENT_ID,
         updatedAt: new Date('2026-05-01T10:00:00Z'),
         doctor: doctorRow(),
+        patient: patientRow(),
+        messages: [
+          {
+            id: 'm1',
+            body: 'How is the new dosage working for you?',
+            senderUserId: DOCTOR_ID,
+            createdAt: new Date('2026-05-01T10:00:00Z'),
+          },
+        ],
+        _count: { messages: 0 },
+      },
+    ]);
+
+    const svc = await buildService(prisma);
+    const out = await svc.listThreads(DOCTOR_ID);
+
+    expect(prisma.doctorPatientThread.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          doctorUserId: DOCTOR_ID,
+          messages: { some: {} },
+        },
+      }),
+    );
+    expect(out.items[0]).toMatchObject({
+      threadId: THREAD_ID,
+      doctorUserId: DOCTOR_ID,
+      patientUserId: PATIENT_ID,
+      patientName: 'Kiyar Ali',
+      lastMessageSender: 'doctor',
+    });
+  });
+
+  it('getUnreadCount counts unread inbound messages, scoped by caller role', async () => {
+    const prisma = makePrisma();
+    prisma.userProfile.findUnique.mockResolvedValue({
+      role: 'professional',
+    });
+    prisma.doctorPatientMessage.count.mockResolvedValue(7);
+
+    const svc = await buildService(prisma);
+    const out = await svc.getUnreadCount(DOCTOR_ID);
+
+    expect(prisma.doctorPatientMessage.count).toHaveBeenCalledWith({
+      where: {
+        readAt: null,
+        NOT: { senderUserId: DOCTOR_ID },
+        thread: { doctorUserId: DOCTOR_ID },
+      },
+    });
+    expect(out).toEqual({ count: 7 });
+  });
+
+  it('listThreads marks the patient as the last sender when they wrote it', async () => {
+    const prisma = makePrisma();
+    prisma.doctorPatientThread.findMany.mockResolvedValue([
+      {
+        id: THREAD_ID,
+        doctorUserId: DOCTOR_ID,
+        patientUserId: PATIENT_ID,
+        updatedAt: new Date('2026-05-01T10:00:00Z'),
+        doctor: doctorRow(),
+        patient: patientRow(),
         messages: [
           {
             id: 'm1',
@@ -112,23 +208,29 @@ describe('MessagesService', () => {
 
   it('listThreads falls back to preferredName, then email-local-part for doctorName', async () => {
     const prisma = makePrisma();
-    (prisma.doctorPatientThread.findMany as jest.Mock).mockResolvedValue([
+    prisma.doctorPatientThread.findMany.mockResolvedValue([
       {
         id: 't-prefname',
+        doctorUserId: DOCTOR_ID,
+        patientUserId: PATIENT_ID,
         updatedAt: new Date('2026-05-01T10:00:00Z'),
         doctor: doctorRow({
           profile: { preferredName: 'Anna', professionalProfile: null },
         }),
+        patient: patientRow(),
         messages: [],
         _count: { messages: 0 },
       },
       {
         id: 't-email',
+        doctorUserId: DOCTOR_ID,
+        patientUserId: PATIENT_ID,
         updatedAt: new Date('2026-05-01T09:00:00Z'),
         doctor: doctorRow({
           email: 'd2@example.com',
           profile: { preferredName: '', professionalProfile: null },
         }),
+        patient: patientRow(),
         messages: [],
         _count: { messages: 0 },
       },
@@ -143,36 +245,36 @@ describe('MessagesService', () => {
 
   it('getThread throws 404 when thread does not exist', async () => {
     const prisma = makePrisma();
-    (prisma.doctorPatientThread.findUnique as jest.Mock).mockResolvedValue(null);
+    prisma.doctorPatientThread.findUnique.mockResolvedValue(null);
     const svc = await buildService(prisma);
-    await expect(svc.getThread(PATIENT_ID, THREAD_ID, 50)).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      svc.getThread(PATIENT_ID, THREAD_ID, 50),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('getThread throws 403 when caller is not the patient on the thread', async () => {
     const prisma = makePrisma();
-    (prisma.doctorPatientThread.findUnique as jest.Mock).mockResolvedValue({
+    prisma.doctorPatientThread.findUnique.mockResolvedValue({
       id: THREAD_ID,
       patientUserId: 'someone-else',
       doctor: doctorRow(),
     });
     const svc = await buildService(prisma);
-    await expect(svc.getThread(PATIENT_ID, THREAD_ID, 50)).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      svc.getThread(PATIENT_ID, THREAD_ID, 50),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     // Should NOT mark anything as read for a non-participant.
     expect(prisma.doctorPatientMessage.updateMany).not.toHaveBeenCalled();
   });
 
   it('getThread marks doctor → patient messages as read and returns oldest-first', async () => {
     const prisma = makePrisma();
-    (prisma.doctorPatientThread.findUnique as jest.Mock).mockResolvedValue({
+    prisma.doctorPatientThread.findUnique.mockResolvedValue({
       id: THREAD_ID,
       patientUserId: PATIENT_ID,
       doctor: doctorRow(),
     });
-    (prisma.doctorPatientMessage.findMany as jest.Mock).mockResolvedValue([
+    prisma.doctorPatientMessage.findMany.mockResolvedValue([
       {
         id: 'm-newest',
         threadId: THREAD_ID,
@@ -225,7 +327,7 @@ describe('MessagesService', () => {
 
   it('sendMessage rejects with 403 when caller is not the patient on the thread', async () => {
     const prisma = makePrisma();
-    (prisma.doctorPatientThread.findUnique as jest.Mock).mockResolvedValue({
+    prisma.doctorPatientThread.findUnique.mockResolvedValue({
       id: THREAD_ID,
       patientUserId: 'someone-else',
       doctor: doctorRow(),
@@ -239,13 +341,13 @@ describe('MessagesService', () => {
 
   it('sendMessage persists trimmed body and returns DTO with mine=true', async () => {
     const prisma = makePrisma();
-    (prisma.doctorPatientThread.findUnique as jest.Mock).mockResolvedValue({
+    prisma.doctorPatientThread.findUnique.mockResolvedValue({
       id: THREAD_ID,
       patientUserId: PATIENT_ID,
       doctor: doctorRow(),
     });
-    (prisma.doctorPatientThread.update as jest.Mock).mockResolvedValue({});
-    (prisma.doctorPatientMessage.create as jest.Mock).mockResolvedValue({
+    prisma.doctorPatientThread.update.mockResolvedValue({});
+    prisma.doctorPatientMessage.create.mockResolvedValue({
       id: 'm-new',
       threadId: THREAD_ID,
       senderUserId: PATIENT_ID,
