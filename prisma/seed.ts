@@ -11,7 +11,12 @@ import {
   Prisma,
   PrismaClient,
   UserAppRole,
-  UserAppRole,
+  ChatThreadKind,
+  ChatMessageRole,
+  OnboardingUserRole,
+  OnboardingMeasurementSystem,
+  OnboardingSexAtBirth,
+  OnboardingPreferredFeature,
   type HealthcareFacilityType,
 } from '../src/generated/prisma/client';
 
@@ -275,10 +280,17 @@ async function seedDevAdmin() {
     return;
   }
 
-  const email = (process.env.DEV_ADMIN_EMAIL ?? 'admin@mediai.dev')
+  const email = (
+    process.env.DEV_ADMIN_EMAIL ??
+    process.env.SEED_ADMIN_EMAIL ??
+    'admin@mediai.dev'
+  )
     .trim()
     .toLowerCase();
-  const password = process.env.DEV_ADMIN_PASSWORD ?? 'ChangeMeDev1!';
+  const password =
+    process.env.DEV_ADMIN_PASSWORD ??
+    process.env.SEED_ADMIN_PASSWORD ??
+    'ChangeMeDev1!';
   if (password.length < 8) {
     console.warn(
       'DEV_ADMIN_PASSWORD must be at least 8 characters; skipping dev admin seed.',
@@ -293,17 +305,401 @@ async function seedDevAdmin() {
     update: { passwordHash, appRole: UserAppRole.admin },
   });
   console.log(
-    `Dev admin user: ${email} / (password from DEV_ADMIN_PASSWORD or default ChangeMeDev1!)`,
+    `Dev admin user: ${email} / (password from DEV_ADMIN_PASSWORD, SEED_ADMIN_PASSWORD, or default ChangeMeDev1!)`,
+  );
+}
+
+/** Public pricing tiers — only when the table is empty. */
+async function seedSubscriptionPlansIfEmpty() {
+  const n = await prisma.subscriptionPlan.count();
+  if (n > 0) {
+    console.log('Subscription plans already present; skip.');
+    return;
+  }
+
+  await prisma.subscriptionPlan.createMany({
+    data: [
+      {
+        name: 'Free',
+        description: 'Core AI guidance and education for individuals getting started.',
+        monthlyPriceCents: 0,
+        yearlyPriceCents: 0,
+        features: [
+          'Limited AI Doctor questions per day',
+          'Symptom guide & glossary',
+          'Basic lab result explanations',
+        ] as Prisma.InputJsonValue,
+        sortOrder: 0,
+        active: true,
+      },
+      {
+        name: 'Lite',
+        description: 'More daily usage and priority-friendly experience.',
+        monthlyPriceCents: 399,
+        yearlyPriceCents: 3990,
+        features: [
+          'Higher daily AI Doctor limits',
+          'Save conversation history longer',
+          'Email support',
+        ] as Prisma.InputJsonValue,
+        sortOrder: 1,
+        active: true,
+      },
+      {
+        name: 'Pro',
+        description: 'For active patients coordinating care and second opinions.',
+        monthlyPriceCents: 999,
+        yearlyPriceCents: 9990,
+        features: [
+          'Top usage tier for AI Doctor',
+          'Second-opinion workflow helpers',
+          'Export-friendly summaries',
+        ] as Prisma.InputJsonValue,
+        sortOrder: 2,
+        active: true,
+      },
+    ],
+  });
+  console.log('Seeded 3 subscription plans (Free, Lite, Pro).');
+}
+
+/** Second brochure doctor for “Top Doctors” lists / detail UX. */
+async function seedSecondTopDoctorIfMissing() {
+  const existing = await prisma.topDoctor.findFirst({
+    where: { name: 'Dr. Helen Tadesse' },
+  });
+  if (existing) {
+    console.log('Second demo top doctor present; skip.');
+    return;
+  }
+
+  await prisma.topDoctor.create({
+    data: {
+      name: 'Dr. Helen Tadesse',
+      role: 'Cardiologist',
+      specialty: 'Cardiology',
+      subSpecialty: 'Preventive Cardiology, Heart Failure',
+      yearsOfExperience: 18,
+      videoFee: 350,
+      writtenFee: 275,
+      heroImageUrl: '/sample_doc_photo.png',
+      educationDegree: 'MD: Addis Ababa University',
+      educationYear: '2008',
+      diseases: [
+        'Hypertension',
+        'Heart Failure',
+        'Atrial Fibrillation',
+        'Coronary Artery Disease',
+        'Lipid Disorders',
+      ] as Prisma.InputJsonValue,
+      biography: [
+        'Dr. Tadesse focuses on preventive cardiology and helping patients understand risk factors before symptoms progress.',
+        'She has led community screening programs and works closely with primary care teams on medication titration and lifestyle plans.',
+      ] as Prisma.InputJsonValue,
+      experience: [
+        {
+          title: 'Staff Cardiologist, Tikur Anbessa Specialized Hospital',
+          subtitle: 'Addis Ababa. 2015 - present',
+        },
+      ] as Prisma.InputJsonValue,
+      affiliations: [
+        {
+          title: 'Ethiopian Cardiac Society',
+          subtitle: 'Member',
+        },
+      ] as Prisma.InputJsonValue,
+      publicationsSummary: 'Co-author on regional hypertension management guidelines.',
+      published: true,
+      sortOrder: 1,
+    },
+  });
+  console.log('Seeded 2nd top doctor (Dr. Helen Tadesse / Cardiology).');
+}
+
+const DEMO_PATIENT_EMAIL = 'patient.demo@mediai.dev';
+const DEMO_DOCTOR_EMAIL = 'doctor.demo@mediai.dev';
+
+/** Demo password for patient + doctor demo accounts (override with SEED_DEMO_PASSWORD). */
+function demoPassword(): string {
+  return process.env.SEED_DEMO_PASSWORD ?? 'DemoMediai2026!';
+}
+
+/**
+ * Patient + professional users, AI chat threads, doctor↔patient thread/messages,
+ * and one support report — safe to re-run (upserts / counts).
+ */
+async function seedDemoUsersAndActivity() {
+  const pwd = demoPassword();
+  if (pwd.length < 8) {
+    console.warn('SEED_DEMO_PASSWORD must be at least 8 chars; skip demo users.');
+    return;
+  }
+
+  const hash = await bcrypt.hash(pwd, BCRYPT_ROUNDS);
+
+  const patient = await prisma.user.upsert({
+    where: { email: DEMO_PATIENT_EMAIL },
+    create: {
+      email: DEMO_PATIENT_EMAIL,
+      passwordHash: hash,
+      appRole: UserAppRole.user,
+    },
+    update: { passwordHash: hash, appRole: UserAppRole.user },
+  });
+
+  const doctor = await prisma.user.upsert({
+    where: { email: DEMO_DOCTOR_EMAIL },
+    create: {
+      email: DEMO_DOCTOR_EMAIL,
+      passwordHash: hash,
+      appRole: UserAppRole.user,
+    },
+    update: { passwordHash: hash, appRole: UserAppRole.user },
+  });
+
+  const patientMedicalHistory = {
+    chronicDiseases: ['Hypertension'],
+    chronicDetails: 'Diagnosed 2021; well controlled on medication.',
+    familyHistory: ['Diabetes', 'Heart Disease'],
+    familyHistoryDetails: 'Father had type 2 diabetes.',
+    allergies: ['Penicillin'],
+    allergyDetails: 'Rash in childhood.',
+    surgicalHistory: 'Appendectomy 2010',
+    currentMedications: 'Lisinopril 10mg daily',
+    pastMedications: '',
+    smokingIntensity: 'Never',
+    alcoholIntake: 'Occasional',
+    dietaryHabits: 'Mediterranean-style, low salt',
+    activityLevel: 'Walks 30 min, 4x/week',
+    sleepPattern: '6–7 hours',
+    stressLevel: 'Moderate (work)',
+  } as Prisma.InputJsonValue;
+
+  await prisma.userProfile.upsert({
+    where: { userId: patient.id },
+    create: {
+      userId: patient.id,
+      role: OnboardingUserRole.personal,
+      preferredName: 'Meron',
+      confirmedAdult: true,
+      region: 'Addis Ababa',
+      ageYears: 34,
+      measurementSystem: OnboardingMeasurementSystem.metric,
+      weight: '62',
+      heightFeet: null,
+      heightInches: null,
+      heightCm: '165',
+      sexAtBirth: OnboardingSexAtBirth.female,
+      preferredFeature: OnboardingPreferredFeature.ai_doctor,
+      medicalHistory: patientMedicalHistory,
+      aiDoctorSetupCompleted: true,
+    },
+    update: {
+      role: OnboardingUserRole.personal,
+      preferredName: 'Meron',
+      confirmedAdult: true,
+      region: 'Addis Ababa',
+      ageYears: 34,
+      measurementSystem: OnboardingMeasurementSystem.metric,
+      weight: '62',
+      heightCm: '165',
+      heightFeet: null,
+      heightInches: null,
+      sexAtBirth: OnboardingSexAtBirth.female,
+      preferredFeature: OnboardingPreferredFeature.ai_doctor,
+      medicalHistory: patientMedicalHistory,
+      aiDoctorSetupCompleted: true,
+    },
+  });
+
+  const doctorProfessional = {
+    title: 'dr',
+    fullName: 'Dr. Yonas Bekele',
+    specialty: 'Internal Medicine',
+    region: 'Addis Ababa',
+  } as Prisma.InputJsonValue;
+
+  await prisma.userProfile.upsert({
+    where: { userId: doctor.id },
+    create: {
+      userId: doctor.id,
+      role: OnboardingUserRole.professional,
+      preferredName: 'Dr. Yonas',
+      confirmedAdult: true,
+      region: 'Addis Ababa',
+      ageYears: 42,
+      measurementSystem: OnboardingMeasurementSystem.metric,
+      weight: '78',
+      heightFeet: null,
+      heightInches: null,
+      heightCm: '182',
+      sexAtBirth: OnboardingSexAtBirth.male,
+      preferredFeature: OnboardingPreferredFeature.top_doctors,
+      professionalProfile: doctorProfessional,
+      aiDoctorSetupCompleted: true,
+    },
+    update: {
+      role: OnboardingUserRole.professional,
+      preferredName: 'Dr. Yonas',
+      confirmedAdult: true,
+      region: 'Addis Ababa',
+      ageYears: 42,
+      measurementSystem: OnboardingMeasurementSystem.metric,
+      weight: '78',
+      heightCm: '182',
+      heightFeet: null,
+      heightInches: null,
+      sexAtBirth: OnboardingSexAtBirth.male,
+      preferredFeature: OnboardingPreferredFeature.top_doctors,
+      professionalProfile: doctorProfessional,
+      aiDoctorSetupCompleted: true,
+    },
+  });
+
+  let selfConv = await prisma.chatConversation.findFirst({
+    where: {
+      userId: patient.id,
+      kind: ChatThreadKind.personal,
+      patientUserId: null,
+    },
+  });
+  if (!selfConv) {
+    selfConv = await prisma.chatConversation.create({
+      data: {
+        kind: ChatThreadKind.personal,
+        userId: patient.id,
+        patientUserId: null,
+      },
+    });
+  }
+  const selfMsgCount = await prisma.chatMessage.count({
+    where: { conversationId: selfConv.id },
+  });
+  if (selfMsgCount === 0) {
+    await prisma.chatMessage.createMany({
+      data: [
+        {
+          conversationId: selfConv.id,
+          role: ChatMessageRole.user,
+          content:
+            'I have had a dull headache for three days and feel tired. Could this be serious?',
+        },
+        {
+          conversationId: selfConv.id,
+          role: ChatMessageRole.assistant,
+          content:
+            'Headaches with fatigue are common and often benign, but persistent or worsening symptoms deserve attention. Consider hydration, sleep, and stress; seek urgent care for sudden severe headache, fever, neck stiffness, vision changes, weakness, or confusion. This is general information only — a clinician can evaluate you properly.',
+        },
+      ],
+    });
+  }
+
+  let clinicalConv = await prisma.chatConversation.findFirst({
+    where: {
+      userId: doctor.id,
+      kind: ChatThreadKind.personal,
+      patientUserId: patient.id,
+    },
+  });
+  if (!clinicalConv) {
+    clinicalConv = await prisma.chatConversation.create({
+      data: {
+        kind: ChatThreadKind.personal,
+        userId: doctor.id,
+        patientUserId: patient.id,
+      },
+    });
+  }
+  const clinicalMsgCount = await prisma.chatMessage.count({
+    where: { conversationId: clinicalConv.id },
+  });
+  if (clinicalMsgCount === 0) {
+    await prisma.chatMessage.createMany({
+      data: [
+        {
+          conversationId: clinicalConv.id,
+          role: ChatMessageRole.user,
+          content:
+            'Summarize this patient’s hypertension management priorities for today’s telehealth visit.',
+        },
+        {
+          conversationId: clinicalConv.id,
+          role: ChatMessageRole.assistant,
+          content:
+            'Demo summary: patient reports controlled hypertension on lisinopril, family history of diabetes and heart disease, penicillin allergy documented. Reinforce adherence, home BP monitoring, lifestyle salt reduction, and follow-up labs as per local protocol. Not a substitute for clinical judgment.',
+        },
+      ],
+    });
+  }
+
+  let thread = await prisma.doctorPatientThread.findUnique({
+    where: {
+      doctorUserId_patientUserId: {
+        doctorUserId: doctor.id,
+        patientUserId: patient.id,
+      },
+    },
+  });
+  if (!thread) {
+    thread = await prisma.doctorPatientThread.create({
+      data: {
+        doctorUserId: doctor.id,
+        patientUserId: patient.id,
+      },
+    });
+  }
+  const dmCount = await prisma.doctorPatientMessage.count({
+    where: { threadId: thread.id },
+  });
+  if (dmCount === 0) {
+    await prisma.doctorPatientMessage.createMany({
+      data: [
+        {
+          threadId: thread.id,
+          senderUserId: doctor.id,
+          body: 'Hi Meron — I reviewed your latest BP log. Please continue lisinopril and send a reading next week.',
+        },
+        {
+          threadId: thread.id,
+          senderUserId: patient.id,
+          body: 'Thank you, Dr. Yonas. I will log mornings before breakfast.',
+        },
+      ],
+    });
+  }
+
+  const reportCount = await prisma.supportReport.count({
+    where: { userId: patient.id },
+  });
+  if (reportCount === 0) {
+    await prisma.supportReport.create({
+      data: {
+        userId: patient.id,
+        message: 'Demo: UI looks great; dark mode on dashboard would be nice.',
+      },
+    });
+  }
+
+  console.log(
+    `Demo accounts (password: env SEED_DEMO_PASSWORD or default DemoMediai2026!):\n` +
+      `  Patient: ${DEMO_PATIENT_EMAIL}\n` +
+      `  Doctor:  ${DEMO_DOCTOR_EMAIL}`,
   );
 }
 
 export async function main() {
-  await seedAdmin();
   await seedTopDoctor();
   await seedBlog();
   await seedEducation();
   await seedHealthFacilities();
   await seedDevAdmin();
+  await seedSubscriptionPlansIfEmpty();
+  await seedSecondTopDoctorIfMissing();
+  if (process.env.SEED_DEMO_DATA !== 'false') {
+    await seedDemoUsersAndActivity();
+  } else {
+    console.log('Demo users/chats skipped (SEED_DEMO_DATA=false).');
+  }
 }
 
 main()
@@ -313,6 +709,5 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect();
-    await pool.end();
     await pool.end();
   });

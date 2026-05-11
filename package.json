@@ -26,6 +26,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
+    "db:bootstrap": "prisma migrate deploy && prisma db seed",
     "prisma:push": "prisma db push",
     "ingest:guidelines": "npx ts-node --transpile-only scripts/ingest-guidelines.ts"
   },
