@@ -18,12 +18,10 @@ import {
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { getOnboardingConfigSnapshot } from './onboarding.constants';
 
-export type OnboardingConfigPayload = ReturnType<
-  typeof getOnboardingConfigSnapshot
->;
+export type OnboardingConfigPayload = ReturnType<typeof getOnboardingConfigSnapshot>;
 
 @Injectable()
-export class OnboardingService {
+export class OnboardingService {  
   constructor(private readonly prisma: PrismaService) {}
 
   getConfig(): OnboardingConfigPayload {
@@ -143,7 +141,9 @@ export class OnboardingService {
     };
   }
 
-  private toPrismaRole(r: CompleteOnboardingDto['role']): OnboardingUserRole {
+  private toPrismaRole(
+    r: CompleteOnboardingDto['role'],
+  ): OnboardingUserRole {
     return r === 'professional'
       ? OnboardingUserRole.professional
       : OnboardingUserRole.personal;
@@ -164,4 +164,5 @@ export class OnboardingService {
     if (s === 'male') return OnboardingSexAtBirth.male;
     return OnboardingSexAtBirth.other;
   }
+
 }
