@@ -52,7 +52,7 @@ describeChat('Chat — production checks (e2e, RUN_CHAT_E2E=1)', () => {
         weight: '70',
         heightCm: '175',
         sexAtBirth: 'female',
-        preferredFeature: 'lab-interpretation',
+        preferredFeature: 'lab-test-interpretation',
       })
       .expect(200);
 

@@ -8,6 +8,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { config as loadEnv } from 'dotenv';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 import { DocumentAudience, PrismaClient } from '../src/generated/prisma/client';
 import { hashDummyEmbedding } from '../src/chat/embedding-dummy.util';
 import {
@@ -80,8 +82,13 @@ function audienceForFile(name: string): DocumentAudience {
 }
 
 async function main() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error('DATABASE_URL is required for ingest');
+  }
+  const pool = new Pool({ connectionString });
+  const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
   const root = process.argv[2] || path.join(__dirname, '../docs/guidelines');
-  const prisma = new PrismaClient();
   const files: string[] = [];
   const walk = (d: string) => {
     for (const n of fs.readdirSync(d)) {
@@ -164,6 +171,7 @@ async function main() {
     }
   }
   await prisma.$disconnect();
+  await pool.end();
   console.log('Done.');
 }
 

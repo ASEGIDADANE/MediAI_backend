@@ -26,6 +26,7 @@ import {
   parseMedicalHistory,
   userProfileToDashboardProfile,
 } from './user-profile.mapper';
+import { readBothConsultationFeesMajor } from '../consultations/consultation-profile-fees.util';
 
 const MAX_MEDICAL_JSON = 100_000;
 
@@ -296,6 +297,14 @@ export class MeService {
     requireString('licenseNumber');
     requireNumber('yearsOfExperience');
     requireString('bio');
+
+    const fees = readBothConsultationFeesMajor(profile.professionalProfile);
+    if (fees.video <= 0) {
+      missing.push('videoConsultationFee');
+    }
+    if (fees.written <= 0) {
+      missing.push('writtenConsultationFee');
+    }
 
     if (missing.length > 0) {
       throw new BadRequestException({

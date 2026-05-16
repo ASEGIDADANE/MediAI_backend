@@ -8,7 +8,7 @@ import {
 } from 'class-validator';
 import { ETHIOPIAN_REGIONS_LIST } from '../../onboarding/onboarding.constants';
 
-const FEATURES = ['ai-doctor', 'top-doctors'] as const;
+const FEATURES = ['ai-doctor', 'top-doctors', 'lab-test-interpretation'] as const;
 
 export const MAX_PROFILE_JSON_CHARS = 28_000;
 

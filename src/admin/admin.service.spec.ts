@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import {
   AccountAuditAction,
   OnboardingUserRole,
@@ -21,7 +22,14 @@ describe('AdminService', () => {
       supportReport: { count: jest.fn().mockResolvedValue(4) },
     };
     const mod = await Test.createTestingModule({
-      providers: [AdminService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        AdminService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn().mockReturnValue('ETB') },
+        },
+      ],
     }).compile();
     const svc = mod.get(AdminService);
     const s = await svc.getSummary();
@@ -84,7 +92,14 @@ describe('AdminService', () => {
       user: { findMany, count },
     };
     const mod = await Test.createTestingModule({
-      providers: [AdminService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        AdminService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn().mockReturnValue('ETB') },
+        },
+      ],
     }).compile();
     const svc = mod.get(AdminService);
     const res = await svc.listUsers({});
@@ -149,7 +164,14 @@ describe('AdminService', () => {
       supportReport: { findMany: supportFindMany },
     };
     const mod = await Test.createTestingModule({
-      providers: [AdminService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        AdminService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn().mockReturnValue('ETB') },
+        },
+      ],
     }).compile();
     const svc = mod.get(AdminService);
     const { items } = await svc.getRecentActivity({ limit: 10 });

@@ -72,7 +72,7 @@ describeWithDb('Phase 3 — /api/me (e2e)', () => {
         weight: '70',
         heightCm: '175',
         sexAtBirth: 'female',
-        preferredFeature: 'lab-interpretation',
+        preferredFeature: 'lab-test-interpretation',
       })
       .expect(200);
 

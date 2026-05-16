@@ -1,0 +1,4 @@
+# Nest build + deps (keeps Cursor off large generated trees)
+dist/
+node_modules/
+coverage/

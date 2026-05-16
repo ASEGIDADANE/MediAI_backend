@@ -1,8 +1,31 @@
+import './load-env';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { PrismaClientExceptionFilter } from './filters/prisma-client-exception.filter';
+
+/** In non-production, allow both localhost and 127.0.0.1 so browser origin matches CORS. */
+function resolveCorsOrigin(): string | string[] {
+  const primary = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+  if (process.env.NODE_ENV === 'production') {
+    return primary;
+  }
+  try {
+    const u = new URL(primary);
+    const altHost =
+      u.hostname === 'localhost'
+        ? '127.0.0.1'
+        : u.hostname === '127.0.0.1'
+          ? 'localhost'
+          : null;
+    if (!altHost) return primary;
+    const alt = `${u.protocol}//${altHost}${u.port ? `:${u.port}` : ''}`;
+    return alt === primary ? primary : [primary, alt];
+  } catch {
+    return primary;
+  }
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -11,9 +34,8 @@ async function bootstrap() {
   app.useGlobalFilters(new PrismaClientExceptionFilter());
   app.enableShutdownHooks();
 
-  const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
   app.enableCors({
-    origin: frontendUrl,
+    origin: resolveCorsOrigin(),
     credentials: true,
   });
 
