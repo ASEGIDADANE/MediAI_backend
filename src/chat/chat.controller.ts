@@ -40,6 +40,7 @@ import { PostPersonalMessageDto } from './dto/post-personal-message.dto';
 import { PostPersonalMessageResponseDto } from './dto/post-personal-message-response.dto';
 import { ReportIssueDto } from './dto/report-issue.dto';
 import { ChatGeneralRateGuard } from './guards/chat-general-rate.guard';
+import { PaymentsService } from '../payments/payments.service';
 
 function sseErrorPayload(e: unknown): {
   error: { code: string; message: string };
@@ -77,6 +78,7 @@ export class ChatController {
     private readonly chat: ChatService,
     private readonly chatCompletion: ChatCompletionService,
     private readonly chatRead: ChatReadService,
+    private readonly payments: PaymentsService,
   ) {}
 
   @Get('config')
@@ -103,11 +105,13 @@ export class ChatController {
     @CurrentUser() user: RequestUser,
     @Query() q: ChatConversationsQueryDto,
   ) {
-    return this.chatRead.listPersonalConversations(
+    return this.payments.requireActiveAssistantAccess(user.id).then(() =>
+      this.chatRead.listPersonalConversations(
       user.id,
       q.page ?? 1,
       q.pageSize ?? 20,
       q.patientUserId,
+      ),
     );
   }
 
@@ -127,11 +131,13 @@ export class ChatController {
     @Param('conversationId') conversationId: string,
     @Query() q: ChatMessagesQueryDto,
   ) {
-    return this.chatRead.getPersonalMessages(
+    return this.payments.requireActiveAssistantAccess(user.id).then(() =>
+      this.chatRead.getPersonalMessages(
       user.id,
       conversationId,
       q.limit ?? 30,
       q.before,
+      ),
     );
   }
 
@@ -160,7 +166,9 @@ export class ChatController {
     @CurrentUser() user: RequestUser,
     @Body() dto: PostPersonalMessageDto,
   ): Promise<PostPersonalMessageResponseDto> {
-    return this.chatCompletion.sendPersonal(user.id, dto);
+    return this.payments.requireActiveAssistantAccess(user.id).then(() =>
+      this.chatCompletion.sendPersonal(user.id, dto),
+    );
   }
 
   @Post('personal/messages/stream')
@@ -189,6 +197,7 @@ export class ChatController {
     res.setHeader('Connection', 'keep-alive');
     res.status(200);
     try {
+      await this.payments.requireActiveAssistantAccess(user.id);
       const out = await this.chatCompletion.runPersonalStream(
         user.id,
         dto,

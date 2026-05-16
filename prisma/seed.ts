@@ -17,6 +17,7 @@ import {
   OnboardingMeasurementSystem,
   OnboardingSexAtBirth,
   OnboardingPreferredFeature,
+  ProfessionalVerificationStatus,
   type HealthcareFacilityType,
 } from '../src/generated/prisma/client';
 
@@ -363,6 +364,42 @@ async function seedSubscriptionPlansIfEmpty() {
   console.log('Seeded 3 subscription plans (Free, Lite, Pro).');
 }
 
+/** Personalized assistant passes — separate from the legacy marketing plan catalog. */
+async function seedAssistantAccessPlansIfEmpty() {
+  const n = await prisma.assistantAccessPlan.count();
+  if (n > 0) {
+    console.log('Assistant access plans already present; skip.');
+    return;
+  }
+
+  await prisma.assistantAccessPlan.createMany({
+    data: [
+      {
+        name: '30-Day Assistant Pass',
+        description:
+          'Unlock personalized AI health guidance for 30 days after payment.',
+        priceCents: 14900,
+        currency: 'ETB',
+        durationDays: 30,
+        active: true,
+        sortOrder: 0,
+      },
+      {
+        name: '90-Day Assistant Pass',
+        description:
+          'Longer assistant access for repeat patients who want follow-up support.',
+        priceCents: 39900,
+        currency: 'ETB',
+        durationDays: 90,
+        active: true,
+        sortOrder: 1,
+      },
+    ],
+  });
+
+  console.log('Seeded assistant access plans (30-day, 90-day).');
+}
+
 /** Second brochure doctor for “Top Doctors” lists / detail UX. */
 async function seedSecondTopDoctorIfMissing() {
   const existing = await prisma.topDoctor.findFirst({
@@ -517,6 +554,19 @@ async function seedDemoUsersAndActivity() {
     fullName: 'Dr. Yonas Bekele',
     specialty: 'Internal Medicine',
     region: 'Addis Ababa',
+    licenseNumber: 'ET-IM-2026-001',
+    yearsOfExperience: 11,
+    bio: 'Board-certified internist focused on chronic disease management and remote follow-up for adult patients.',
+    role: 'Internal Medicine Specialist',
+    subSpecialty: 'Adult chronic care',
+    educationDegree: 'MD: Addis Ababa University',
+    educationYear: '2014',
+    biographyParagraphs: [
+      'Dr. Yonas helps patients manage hypertension, diabetes, and long-term follow-up plans.',
+      'He works closely with patients who need written second opinions and remote consultation support.',
+    ],
+    videoConsultationFee: 800,
+    writtenConsultationFee: 450,
   } as Prisma.InputJsonValue;
 
   await prisma.userProfile.upsert({
@@ -537,6 +587,9 @@ async function seedDemoUsersAndActivity() {
       preferredFeature: OnboardingPreferredFeature.top_doctors,
       professionalProfile: doctorProfessional,
       aiDoctorSetupCompleted: true,
+      verificationStatus: ProfessionalVerificationStatus.verified,
+      verificationSubmittedAt: new Date(),
+      verificationReviewedAt: new Date(),
     },
     update: {
       role: OnboardingUserRole.professional,
@@ -553,6 +606,9 @@ async function seedDemoUsersAndActivity() {
       preferredFeature: OnboardingPreferredFeature.top_doctors,
       professionalProfile: doctorProfessional,
       aiDoctorSetupCompleted: true,
+      verificationStatus: ProfessionalVerificationStatus.verified,
+      verificationSubmittedAt: new Date(),
+      verificationReviewedAt: new Date(),
     },
   });
 
@@ -694,6 +750,7 @@ export async function main() {
   await seedHealthFacilities();
   await seedDevAdmin();
   await seedSubscriptionPlansIfEmpty();
+  await seedAssistantAccessPlansIfEmpty();
   await seedSecondTopDoctorIfMissing();
   if (process.env.SEED_DEMO_DATA !== 'false') {
     await seedDemoUsersAndActivity();

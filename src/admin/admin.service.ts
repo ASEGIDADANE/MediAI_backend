@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   AccountAuditAction,
   OnboardingUserRole,
@@ -11,6 +12,8 @@ import {
   UserAppRole,
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { formatPaymentPrice } from '../payments/payment-format.util';
+import { readBothConsultationFeesMajor } from '../consultations/consultation-profile-fees.util';
 import { takeSkipFromPagination } from './dto/admin-pagination-query.dto';
 import type {
   AdminProfessionalVerificationsQueryDto,
@@ -77,7 +80,10 @@ function extractSpecialty(prof: RawProfile): string | null {
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+  ) {}
 
   async listUsers(dto: AdminUsersQueryDto) {
     const { take, skip, page, pageSize } = takeSkipFromPagination(
@@ -392,6 +398,13 @@ export class AdminService {
       );
     }
 
+    const fees = readBothConsultationFeesMajor(profile.professionalProfile);
+    if (fees.video <= 0 || fees.written <= 0) {
+      throw new BadRequestException(
+        'This professional must set positive video and written consultation fees (whole ETB) in their public profile before they can be approved.',
+      );
+    }
+
     await this.prisma.userProfile.update({
       where: { userId: targetUserId },
       data: {
@@ -466,50 +479,142 @@ export class AdminService {
    * "users with a paid subscription".
    */
   async getBillingSummary() {
-    const activeSubscriptions = await this.prisma.user.count({
-      where: { appRole: UserAppRole.user },
-    });
+    const now = new Date();
+    const currency =
+      this.config.get<string>('CHAPA_CURRENCY')?.toUpperCase() ?? 'ETB';
 
-    const currency = 'USD';
-    const zeroDisplay = formatBillingPrice(0, currency);
+    const [
+      assistantRevenue,
+      consultationRevenue,
+      activeAccessRows,
+      assistantTransactions,
+      consultationTransactions,
+    ] = await this.prisma.$transaction([
+      this.prisma.userAssistantAccess.aggregate({
+        _sum: { amountCents: true },
+        where: { paidAt: { not: null } },
+      }),
+      this.prisma.consultationBooking.aggregate({
+        _sum: { consultationFeeCents: true },
+        where: { paidAt: { not: null } },
+      }),
+      this.prisma.userAssistantAccess.findMany({
+        where: {
+          status: 'active',
+          endsAt: { gt: now },
+        },
+        select: { userId: true, amountCents: true },
+      }),
+      this.prisma.userAssistantAccess.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        include: {
+          user: { select: { email: true } },
+          plan: { select: { name: true } },
+        },
+      }),
+      this.prisma.consultationBooking.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        include: {
+          patient: { select: { email: true } },
+          topDoctor: {
+            select: {
+              email: true,
+              profile: {
+                select: {
+                  preferredName: true,
+                  professionalProfile: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const totalRevenueCents =
+      (assistantRevenue._sum.amountCents ?? 0) +
+      (consultationRevenue._sum.consultationFeeCents ?? 0);
+    const activeSubscriptions = new Set(activeAccessRows.map((row) => row.userId))
+      .size;
+    const monthlyRecurringRevenueCents = activeAccessRows.reduce(
+      (sum, row) => sum + row.amountCents,
+      0,
+    );
+
+    const transactions = [
+      ...assistantTransactions.map((row) => ({
+        id: row.id,
+        userEmail: row.user.email,
+        planName: row.plan.name,
+        amountCents: row.amountCents,
+        amountDisplay: formatPaymentPrice(row.amountCents, row.currency),
+        currency: row.currency,
+        status:
+          row.status === 'active'
+            ? ('completed' as const)
+            : row.status === 'pending'
+              ? ('pending' as const)
+              : ('failed' as const),
+        createdAt: row.createdAt.toISOString(),
+      })),
+      ...consultationTransactions.map((row) => ({
+        id: row.id,
+        userEmail: row.patient.email,
+        planName: `Consultation: ${doctorName(row.topDoctor)} (${row.consultationType})`,
+        amountCents: row.consultationFeeCents,
+        amountDisplay: formatPaymentPrice(
+          row.consultationFeeCents,
+          row.currency,
+        ),
+        currency: row.currency,
+        status:
+          row.status === 'confirmed' || row.status === 'paid'
+            ? ('completed' as const)
+            : row.status === 'pending_payment'
+              ? ('pending' as const)
+              : ('failed' as const),
+        createdAt: row.createdAt.toISOString(),
+      })),
+    ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
     return {
-      totalRevenueCents: 0,
-      totalRevenueDisplay: zeroDisplay,
+      totalRevenueCents,
+      totalRevenueDisplay: formatPaymentPrice(totalRevenueCents, currency),
       currency,
       activeSubscriptions,
-      monthlyRecurringRevenueCents: 0,
-      monthlyRecurringRevenueDisplay: zeroDisplay,
+      monthlyRecurringRevenueCents,
+      monthlyRecurringRevenueDisplay: formatPaymentPrice(
+        monthlyRecurringRevenueCents,
+        currency,
+      ),
       churnRatePercent: null,
-      paymentProviderConnected: false,
-      transactions: [] as Array<{
-        id: string;
-        userEmail: string;
-        planName: string;
-        amountCents: number;
-        amountDisplay: string;
-        currency: string;
-        status: 'completed' | 'pending' | 'failed';
-        createdAt: string;
-      }>,
+      paymentProviderConnected: Boolean(
+        this.config.get<string>('CHAPA_SECRET_KEY'),
+      ),
+      transactions: transactions.slice(0, 12),
     };
   }
 }
 
-/**
- * Local copy of the cents formatter — duplicated here to keep AdminService
- * free of an explicit dependency on the SubscriptionPlans module.
- */
-function formatBillingPrice(cents: number, currency: string): string {
-  const amount = cents / 100;
-  try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  } catch {
-    return `${currency} ${amount.toFixed(2)}`;
+function doctorName(doctor: {
+  email: string;
+  profile: {
+    preferredName: string;
+    professionalProfile: unknown;
+  } | null;
+}): string {
+  if (
+    doctor.profile?.professionalProfile &&
+    typeof doctor.profile.professionalProfile === 'object' &&
+    !Array.isArray(doctor.profile.professionalProfile)
+  ) {
+    const fullName = (doctor.profile.professionalProfile as Record<string, unknown>)
+      .fullName;
+    if (typeof fullName === 'string' && fullName.trim() !== '') {
+      return fullName.trim();
+    }
   }
+  return doctor.profile?.preferredName ?? doctor.email;
 }

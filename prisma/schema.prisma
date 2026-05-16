@@ -51,6 +51,31 @@ enum ProfessionalVerificationStatus {
   rejected
 }
 
+enum PaymentGateway {
+  chapa
+}
+
+enum AssistantAccessStatus {
+  pending
+  active
+  expired
+  cancelled
+  failed
+}
+
+enum ConsultationType {
+  video
+  written
+}
+
+enum ConsultationBookingStatus {
+  pending_payment
+  paid
+  confirmed
+  cancelled
+  failed
+}
+
 model User {
   id           String      @id @default(uuid())
   email        String      @unique
@@ -76,6 +101,9 @@ model User {
   doctorThreads     DoctorPatientThread[]  @relation("DoctorThreads")
   patientThreads    DoctorPatientThread[]  @relation("PatientThreads")
   sentDoctorPatientMessages DoctorPatientMessage[] @relation("DoctorPatientMessageSender")
+  assistantAccesses UserAssistantAccess[]
+  consultationBookings ConsultationBooking[] @relation("PatientConsultationBookings")
+  doctorConsultationBookings ConsultationBooking[] @relation("DoctorConsultationBookings")
 }
 
 /// Append-only style log for compliance; metadata must not store full PHI body text (field names / sizes only).
@@ -425,6 +453,86 @@ model DoctorPatientMessage {
 
   @@index([threadId, createdAt])
   @@map("doctor_patient_message")
+}
+
+model AssistantAccessPlan {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?  @db.VarChar(500)
+  priceCents  Int      @default(0) @map("price_cents")
+  currency    String   @default("ETB") @db.VarChar(3)
+  durationDays Int     @default(30) @map("duration_days")
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  accesses UserAssistantAccess[]
+
+  @@index([active, sortOrder])
+  @@map("assistant_access_plan")
+}
+
+model UserAssistantAccess {
+  id               String                @id @default(uuid())
+  userId           String                @map("user_id")
+  user             User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId           String                @map("plan_id")
+  plan             AssistantAccessPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+  status           AssistantAccessStatus @default(pending)
+  txRef            String                @unique @map("tx_ref")
+  chapaCheckoutUrl String?               @map("chapa_checkout_url")
+  chapaReference   String?               @map("chapa_reference")
+  amountCents      Int                   @map("amount_cents")
+  currency         String                @default("ETB") @db.VarChar(3)
+  startsAt         DateTime?             @map("starts_at")
+  endsAt           DateTime?             @map("ends_at")
+  paidAt           DateTime?             @map("paid_at")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+
+  @@index([userId, status, endsAt])
+  @@index([planId, createdAt])
+  @@map("user_assistant_access")
+}
+
+model ConsultationBooking {
+  id                 String                    @id @default(uuid())
+  patientUserId      String                    @map("patient_user_id")
+  patient            User                      @relation("PatientConsultationBookings", fields: [patientUserId], references: [id], onDelete: Cascade)
+  topDoctorId        String                    @map("top_doctor_id")
+  topDoctor          User                      @relation("DoctorConsultationBookings", fields: [topDoctorId], references: [id], onDelete: Cascade)
+  consultationType   ConsultationType          @default(video) @map("consultation_type")
+  status             ConsultationBookingStatus @default(pending_payment)
+  consultationFeeCents Int                     @map("consultation_fee_cents")
+  currency           String                    @default("ETB") @db.VarChar(3)
+  patientNotes       String?                   @db.VarChar(2000) @map("patient_notes")
+  chapaTxRef         String?                   @unique @map("chapa_tx_ref")
+  chapaReference     String?                   @map("chapa_reference")
+  paidAt             DateTime?                 @map("paid_at")
+  createdAt          DateTime                  @default(now()) @map("created_at")
+  updatedAt          DateTime                  @updatedAt @map("updated_at")
+
+  @@index([patientUserId, createdAt(sort: Desc)])
+  @@index([topDoctorId, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@map("consultation_booking")
+}
+
+model PaymentEvent {
+  id             String         @id @default(uuid())
+  gateway        PaymentGateway @default(chapa)
+  eventType      String         @map("event_type")
+  txRef          String         @map("tx_ref")
+  chapaReference String?        @map("chapa_reference")
+  dedupeKey      String         @unique @map("dedupe_key")
+  payload        Json
+  processedAt    DateTime?      @map("processed_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  @@index([txRef, createdAt(sort: Desc)])
+  @@index([gateway, eventType])
+  @@map("payment_event")
 }
 
 /// Admin-managed pricing tier ("Free", "Lite", "Pro", …). Surfaces on the public
