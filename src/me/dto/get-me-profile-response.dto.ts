@@ -54,6 +54,21 @@ class DashboardProfileViewDto {
       'Only present for `role=professional`. Drives the doctor verification gate on the dashboard.',
   })
   verification?: DoctorVerificationSnapshotDto;
+
+  /**
+   * Phase 5 — patient-selected condition categories used for smart matching
+   * on `/top-doctors`. Empty array when the patient hasn't filled in the
+   * picker yet; meaningless for professional accounts.
+   */
+  @ApiPropertyOptional({ type: [String] })
+  primaryConditions?: string[];
+
+  /**
+   * Phase 5 — doctor's canonical specialty (enum string). Null when not yet
+   * mapped; meaningless for personal accounts.
+   */
+  @ApiPropertyOptional({ nullable: true })
+  medicalSpecialty?: string | null;
 }
 
 export class GetMeProfileResponseDto {

@@ -7,6 +7,11 @@ import {
 import { OnboardingUserRole, Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  bookingChatWindowEndsAt,
+  CHAT_ALLOWED_STATUSES,
+  isBookingChatActive,
+} from '../consultations/booking-statuses';
+import {
   ThreadDetailDto,
   ThreadListDto,
   ThreadMessageDto,
@@ -15,6 +20,11 @@ import {
 } from './dto/thread-message.dto';
 
 const PREVIEW_LIMIT = 200;
+
+// Phase 4 — chat is locked until the doctor approves a booking. See
+// `CHAT_ALLOWED_STATUSES` in `consultations/booking-statuses.ts` for the
+// exact rule.
+const ACTIVE_BOOKING_STATUSES = CHAT_ALLOWED_STATUSES;
 
 type DoctorSnapshot = {
   doctorUserId: string;
@@ -62,9 +72,26 @@ export class MessagesService {
   async listThreads(callerUserId: string): Promise<ThreadListDto> {
     const role = await this.resolveCallerRole(callerUserId);
 
+    // Doctor inbox is additionally gated by the same active-booking rule that
+    // `ProfessionalService.listPatients` enforces, so the doctor's "Messages"
+    // page can never show threads with patients they no longer have a
+    // working relationship with (e.g. cancelled / unpaid bookings). Patient
+    // inbox is *not* gated — patients always keep visibility into doctors
+    // they messaged, regardless of booking state on the doctor's side.
     const where: Prisma.DoctorPatientThreadWhereInput =
       role === OnboardingUserRole.professional
-        ? { doctorUserId: callerUserId, messages: { some: {} } }
+        ? {
+            doctorUserId: callerUserId,
+            messages: { some: {} },
+            patient: {
+              consultationBookings: {
+                some: {
+                  topDoctorId: callerUserId,
+                  status: { in: ACTIVE_BOOKING_STATUSES },
+                },
+              },
+            },
+          }
         : { patientUserId: callerUserId, messages: { some: {} } };
 
     const threads = await this.prisma.doctorPatientThread.findMany({
@@ -143,9 +170,22 @@ export class MessagesService {
   async getUnreadCount(callerUserId: string): Promise<UnreadCountDto> {
     const role = await this.resolveCallerRole(callerUserId);
 
+    // Mirror `listThreads`: doctors only get badge counts for threads
+    // backed by an active booking; otherwise the navbar could read "3 unread"
+    // while the inbox lists 0 conversations.
     const threadFilter: Prisma.DoctorPatientThreadWhereInput =
       role === OnboardingUserRole.professional
-        ? { doctorUserId: callerUserId }
+        ? {
+            doctorUserId: callerUserId,
+            patient: {
+              consultationBookings: {
+                some: {
+                  topDoctorId: callerUserId,
+                  status: { in: ACTIVE_BOOKING_STATUSES },
+                },
+              },
+            },
+          }
         : { patientUserId: callerUserId };
 
     const count = await this.prisma.doctorPatientMessage.count({
@@ -190,14 +230,37 @@ export class MessagesService {
       .reverse()
       .map((m) => this.toMessageDto(m, callerUserId));
 
+    const chatWindowEndsAt = await this.resolveChatWindowEndsAt(
+      callerUserId,
+      thread.doctorUserId,
+    );
+
     return {
       threadId: thread.id,
       ...this.toDoctorSnapshot(thread.doctor),
       messages,
+      chatWindowEndsAt,
     };
   }
 
-  /** Patient → doctor reply in an existing thread. */
+  /**
+   * Patient → doctor reply in an existing thread.
+   *
+   * Phase 4 chat-gating (two layers):
+   *
+   *   1. Status: the patient must currently have at least one booking with
+   *      this doctor in `CHAT_ALLOWED_STATUSES` (approved / completed /
+   *      legacy confirmed). Pending/rejected/cancelled don't qualify.
+   *
+   *   2. Time window: at least one of those bookings must be inside its
+   *      consultation window — `scheduledFor + duration + SLOT_END_GRACE`
+   *      for approved bookings, `completedAt + POST_COMPLETION_GRACE` for
+   *      completed ones. Outside the window the patient must pay for a
+   *      follow-up before they can keep messaging.
+   *
+   * Threads themselves stay forever for medical record continuity; only
+   * the "send" action is gated.
+   */
   async sendMessage(
     callerUserId: string,
     threadId: string,
@@ -209,6 +272,8 @@ export class MessagesService {
     }
 
     const thread = await this.requirePatientThread(callerUserId, threadId);
+
+    await this.assertChatWindowOpen(callerUserId, thread.doctorUserId);
 
     const [, msg] = await this.prisma.$transaction([
       this.prisma.doctorPatientThread.update({
@@ -225,6 +290,95 @@ export class MessagesService {
     ]);
 
     return this.toMessageDto(msg, callerUserId);
+  }
+
+  /**
+   * Throws `ForbiddenException` unless the patient currently has at least
+   * one booking with this doctor whose consultation window is open. Used
+   * by `sendMessage`; the doctor side runs an equivalent check in
+   * `ProfessionalService.sendMessage`.
+   *
+   * Why this is a JS post-filter (not a single Prisma `where`): the
+   * window math depends on each row's `scheduledFor + durationMinutes`,
+   * which Prisma can't express portably without a raw query. The set is
+   * tiny (a single patient/doctor pair rarely has more than a handful of
+   * bookings), so a `take: 5` find + JS filter is cheap and clearer than
+   * raw SQL.
+   */
+  private async assertChatWindowOpen(
+    patientUserId: string,
+    doctorUserId: string,
+  ): Promise<void> {
+    const candidates = await this.prisma.consultationBooking.findMany({
+      where: {
+        patientUserId,
+        topDoctorId: doctorUserId,
+        status: { in: CHAT_ALLOWED_STATUSES },
+      },
+      orderBy: [{ updatedAt: 'desc' }],
+      take: 5,
+      select: {
+        id: true,
+        status: true,
+        scheduledFor: true,
+        durationMinutes: true,
+        completedAt: true,
+        createdAt: true,
+      },
+    });
+    const now = new Date();
+    const active = candidates.find((b) => isBookingChatActive(b, now));
+    if (active) return;
+    // Anything in CHAT_ALLOWED_STATUSES (just expired)? Give a different
+    // copy so the patient knows the path is "book a follow-up".
+    if (candidates.length > 0) {
+      throw new ForbiddenException(
+        'This consultation has ended. Book a follow-up consultation to keep messaging.',
+      );
+    }
+    throw new ForbiddenException(
+      'Chat is locked until you have a doctor-approved consultation with this doctor.',
+    );
+  }
+
+  /**
+   * Returns the ISO timestamp at which chat will next close for this
+   * patient↔doctor pair, or `null` if no window is currently open. Used by
+   * `getThread` to feed the frontend's composer-lock UI.
+   */
+  async resolveChatWindowEndsAt(
+    patientUserId: string,
+    doctorUserId: string,
+  ): Promise<string | null> {
+    const candidates = await this.prisma.consultationBooking.findMany({
+      where: {
+        patientUserId,
+        topDoctorId: doctorUserId,
+        status: { in: CHAT_ALLOWED_STATUSES },
+      },
+      orderBy: [{ updatedAt: 'desc' }],
+      take: 5,
+      select: {
+        id: true,
+        status: true,
+        scheduledFor: true,
+        durationMinutes: true,
+        completedAt: true,
+        createdAt: true,
+      },
+    });
+    const now = new Date();
+    // Pick the *latest* window end across all currently-active bookings —
+    // if a patient has multiple, the chat is open until the last one closes.
+    let latest: Date | null = null;
+    for (const b of candidates) {
+      if (!isBookingChatActive(b, now)) continue;
+      const endsAt = bookingChatWindowEndsAt(b);
+      if (endsAt && (!latest || endsAt.getTime() > latest.getTime())) {
+        latest = endsAt;
+      }
+    }
+    return latest?.toISOString() ?? null;
   }
 
   // --- helpers ---

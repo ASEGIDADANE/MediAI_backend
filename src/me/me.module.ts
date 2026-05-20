@@ -7,6 +7,9 @@ import { MeTrustService } from './me-trust.service';
 @Module({
   controllers: [MeController],
   providers: [MeService, AccountAuditService, MeTrustService],
-  exports: [MeService],
+  // Phase 6 — `AccountAuditService` is now consumed by ProfessionalModule
+  // and ConsultationsModule for booking-lifecycle audit trails. The
+  // `MeService` re-export is preserved for existing consumers.
+  exports: [MeService, AccountAuditService],
 })
 export class MeModule {}

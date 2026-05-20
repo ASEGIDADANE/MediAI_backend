@@ -5,6 +5,7 @@ import {
   OnboardingUserRole,
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { ChapaClient } from './chapa.client';
 import { PaymentsService } from './payments.service';
 
@@ -13,6 +14,8 @@ describe('PaymentsService', () => {
   let prisma: {
     userProfile: { findUnique: jest.Mock };
     userAssistantAccess: { updateMany: jest.Mock; findFirst: jest.Mock };
+    userSubscription: { updateMany: jest.Mock; findFirst: jest.Mock };
+    $transaction: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -22,6 +25,13 @@ describe('PaymentsService', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         findFirst: jest.fn(),
       },
+      userSubscription: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findFirst: jest.fn(),
+      },
+      // requireActiveSubscription batches the two findFirst calls inside a
+      // `$transaction([...])`. We unbatch them by resolving each call sequentially.
+      $transaction: jest.fn((calls: Promise<unknown>[]) => Promise.all(calls)),
     };
     const mod = await Test.createTestingModule({
       providers: [
@@ -34,6 +44,13 @@ describe('PaymentsService', () => {
             get: jest.fn(),
             getOrThrow: jest.fn(() => 'CHASECK_TEST'),
           },
+        },
+        // Phase 6 — booking-paid notifications fire from
+        // `finalizeByVerifiedTransaction`. None of the assertions in this
+        // file go through that code path, so a no-op stub is enough.
+        {
+          provide: NotificationsService,
+          useValue: { enqueue: jest.fn(async () => undefined) },
         },
       ],
     }).compile();
@@ -70,5 +87,49 @@ describe('PaymentsService', () => {
     });
     prisma.userAssistantAccess.findFirst.mockResolvedValue({ id: 'pass-1' });
     await expect(svc.requireActiveAssistantAccess('u1')).resolves.toBeUndefined();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Phase 7 — requireActiveSubscription (canonical gate, accepts either a
+  // SubscriptionPlan-backed UserSubscription *or* a legacy UserAssistantAccess
+  // as a transitional fallback)
+  // ---------------------------------------------------------------------------
+
+  it('requireActiveSubscription resolves for professionals (gate bypassed)', async () => {
+    prisma.userProfile.findUnique.mockResolvedValue({
+      role: OnboardingUserRole.professional,
+    });
+    await expect(svc.requireActiveSubscription('u1')).resolves.toBeUndefined();
+    expect(prisma.userSubscription.findFirst).not.toHaveBeenCalled();
+    expect(prisma.userAssistantAccess.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('requireActiveSubscription throws when patient has no active row in either table', async () => {
+    prisma.userProfile.findUnique.mockResolvedValue({
+      role: OnboardingUserRole.personal,
+    });
+    prisma.userSubscription.findFirst.mockResolvedValue(null);
+    prisma.userAssistantAccess.findFirst.mockResolvedValue(null);
+    await expect(svc.requireActiveSubscription('u1')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('requireActiveSubscription resolves when a paid UserSubscription is active', async () => {
+    prisma.userProfile.findUnique.mockResolvedValue({
+      role: OnboardingUserRole.personal,
+    });
+    prisma.userSubscription.findFirst.mockResolvedValue({ id: 'sub-1' });
+    prisma.userAssistantAccess.findFirst.mockResolvedValue(null);
+    await expect(svc.requireActiveSubscription('u1')).resolves.toBeUndefined();
+  });
+
+  it('requireActiveSubscription resolves on legacy assistant pass fallback', async () => {
+    prisma.userProfile.findUnique.mockResolvedValue({
+      role: OnboardingUserRole.personal,
+    });
+    prisma.userSubscription.findFirst.mockResolvedValue(null);
+    prisma.userAssistantAccess.findFirst.mockResolvedValue({ id: 'pass-1' });
+    await expect(svc.requireActiveSubscription('u1')).resolves.toBeUndefined();
   });
 });

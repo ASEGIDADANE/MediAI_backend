@@ -63,16 +63,145 @@ enum AssistantAccessStatus {
   failed
 }
 
+/// Lifecycle of a `UserSubscription` row. Mirrors `AssistantAccessStatus` so
+/// the existing finalize/expire code paths can be reused without translation.
+enum SubscriptionStatus {
+  pending
+  active
+  expired
+  cancelled
+  failed
+}
+
+/// Billing cadence the user picked when checking out. `endsAt` is computed
+/// from `startsAt` + the interval-specific duration (monthly = 30 days,
+/// yearly = 365 days) so the gate can do a single timestamp comparison.
+enum SubscriptionInterval {
+  monthly
+  yearly
+}
+
 enum ConsultationType {
   video
   written
+  // Phase 4 — patient travels to the doctor's clinic. No meeting link
+  // needed; the booking carries the doctor's clinic address (sourced from
+  // their `professionalProfile.clinicAddress`).
+  in_person
+  // Phase 4 — combination of video + a planned in-person follow-up. Treated
+  // as `video` for slot generation; the doctor can attach both a meeting
+  // link and clinic details when approving.
+  hybrid
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5 — Smart matching taxonomy
+//
+// Two canonical enums power the patient↔doctor matching on /top-doctors:
+//
+//   * `MedicalSpecialty` — what kind of doctor someone is. Set on
+//     `UserProfile.medicalSpecialty` (single value; null until the doctor or
+//     admin maps the doctor's free-text specialty). Existing rows keep their
+//     human-readable `professionalProfile.specialty` JSON string for display.
+//
+//   * `ConditionCategory` — what the patient is concerned about. Stored on
+//     `UserProfile.primaryConditions` as an enum array (patients can have
+//     multiple concerns). The mapping from category → specialties lives in
+//     application code (`consultation-matching.constants.ts`) so the product
+//     team can re-tune it without a migration.
+//
+// Both enums are deliberately coarse-grained. They power filtering / sorting
+// only — the doctor's free-text `specialty` and the patient's free-text
+// `chronicDiseases` keep their richer descriptive role.
+// ---------------------------------------------------------------------------
+
+enum MedicalSpecialty {
+  general_practice
+  internal_medicine
+  cardiology
+  dermatology
+  endocrinology
+  gastroenterology
+  gynecology_obstetrics
+  hematology
+  infectious_disease
+  neurology
+  oncology
+  ophthalmology
+  orthopedics
+  ent_otolaryngology
+  pediatrics
+  psychiatry
+  pulmonology
+  rheumatology
+  urology
+  nephrology
+  general_surgery
+  neurosurgery
+  dentistry
+  allergology
+  plastic_surgery
+  other
+}
+
+enum ConditionCategory {
+  general_wellness
+  heart_circulation
+  skin
+  digestive_stomach
+  diabetes_hormones
+  mental_health
+  womens_health
+  childrens_health
+  bones_joints
+  eyes
+  ear_nose_throat
+  lungs_breathing
+  kidney_urinary
+  allergies
+  cancer_oncology
+  neurological
+  dental
+  reproductive_health
+  other
 }
 
 enum ConsultationBookingStatus {
   pending_payment
   paid
+  /// Patient has paid; waiting for the doctor to accept or reject. The
+  /// payments webhook auto-transitions `paid → pending_doctor_approval`
+  /// immediately after Chapa confirms — `paid` is therefore a short-lived
+  /// internal state.
+  pending_doctor_approval
+  /// Doctor accepted the request. Chat unlocks, meeting link is set, the
+  /// appointment now appears on `/professional/appointments`.
+  approved
+  /// Doctor declined. `doctorDecisionReason` carries the explanation;
+  /// `refundStatus` is moved to `pending` if the booking was already paid.
+  rejected
+  /// Appointment happened. Marked by the doctor (or auto-marked by a future
+  /// scheduled job once `scheduledFor` + `durationMinutes` is in the past).
+  completed
+  /// Patient (or doctor) didn't show. Refund handling matches `rejected`.
+  missed
+  /// `confirmed` is kept for backward compat with bookings created before
+  /// the Phase 3 lifecycle. New code should not write this value — treat
+  /// it as equivalent to `approved`.
   confirmed
   cancelled
+  failed
+}
+
+/// Bookkeeping for refundable bookings. `none` until a refund is owed,
+/// `pending` once the doctor/patient cancellation puts a paid booking into
+/// a refund-eligible state, `refunded` / `failed` set by an out-of-band
+/// finance job (Phase 3 ships only the placeholder column — actual Chapa
+/// refund integration is a later workstream).
+enum ConsultationRefundStatus {
+  none
+  pending
+  refunded
   failed
 }
 
@@ -102,8 +231,19 @@ model User {
   patientThreads    DoctorPatientThread[]  @relation("PatientThreads")
   sentDoctorPatientMessages DoctorPatientMessage[] @relation("DoctorPatientMessageSender")
   assistantAccesses UserAssistantAccess[]
+  // Phase 7 — subscription history (one row per Chapa checkout; latest
+  // `active` row with `endsAt > now()` gates personal-chat access).
+  subscriptions     UserSubscription[]     @relation("UserSubscriptions")
   consultationBookings ConsultationBooking[] @relation("PatientConsultationBookings")
   doctorConsultationBookings ConsultationBooking[] @relation("DoctorConsultationBookings")
+
+  // Phase 2 — availability scheduling (only meaningful for `professional` users)
+  weeklyAvailabilityRules WeeklyAvailabilityRule[] @relation("DoctorAvailabilityRules")
+  unavailableDates        DoctorUnavailableDate[]  @relation("DoctorUnavailableDates")
+  capacity                DoctorCapacity?          @relation("DoctorCapacity")
+
+  // Phase 6 — in-app notifications inbox.
+  notifications           Notification[]           @relation("UserNotifications")
 }
 
 /// Append-only style log for compliance; metadata must not store full PHI body text (field names / sizes only).
@@ -113,6 +253,16 @@ enum AccountAuditAction {
   ai_doctor_setup_patch
   data_export
   account_delete_initiated
+  // Phase 6 — consultation lifecycle. Subjects are always recorded as the
+  // *acting* user (the doctor or patient who triggered the action). The
+  // booking id + counterparty id live in the metadata blob.
+  appointment_approved
+  appointment_rejected
+  appointment_cancelled
+  appointment_completed
+  availability_updated
+  meeting_link_set
+  consultation_booking_created
 }
 
 model AccountAuditLog {
@@ -128,6 +278,76 @@ model AccountAuditLog {
   createdAt DateTime          @default(now())
 
   @@index([userId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6 — In-app notifications
+//
+// Single inbox per user. Each row is a *delivered* notification — emails
+// (Resend) are best-effort side-effects, not separate rows. The bell icon
+// in the dashboard polls `/me/notifications` + `/me/notifications/unread-
+// count`; the latter is a cheap `COUNT WHERE readAt IS NULL` thanks to the
+// partial index below.
+//
+// Body copy is human-readable (we may translate later); structured payloads
+// live in `metadata` so the frontend can deep-link without parsing strings.
+// ---------------------------------------------------------------------------
+
+enum NotificationType {
+  /// Patient submitted a booking (pre-payment).
+  booking_submitted
+  /// Patient finished paying (Chapa webhook / return).
+  booking_paid
+  /// Doctor accepted the request — chat unlocks for the patient.
+  booking_approved
+  /// Doctor declined the request.
+  booking_rejected
+  /// Either party cancelled.
+  booking_cancelled
+  /// Doctor (or auto-job) marked the consultation completed.
+  booking_completed
+  /// Pre-appointment ping. Fired 24h / 1h before `scheduledFor`. Currently
+  /// reserved (the cron job ships in a later release).
+  booking_reminder_24h
+  booking_reminder_1h
+  /// Doctor attached / updated the meeting link.
+  meeting_link_set
+  /// New patient↔doctor chat message. Optional (we'd debounce client-side
+  /// to avoid flooding the bell). Reserved for future use.
+  message_received
+  /// Catch-all for system messages (verification approvals, admin notices).
+  system
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  /// Recipient.
+  userId    String           @map("user_id")
+  user      User             @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  /// Short headline, e.g. "Your consultation request was approved".
+  title     String           @db.VarChar(160)
+  /// Plain-text supporting copy. ≤ 1000 chars; not localized server-side
+  /// in v1 (frontend renders as-is).
+  body      String           @db.VarChar(1000)
+  /// Optional in-app deep link (e.g. /dashboard/consultations).
+  actionUrl String?          @map("action_url") @db.VarChar(500)
+  /// Structured payload for the UI — booking id, counterparty name, etc.
+  /// Kept opaque on the DB side so we can extend per-type without
+  /// migrating the table every time.
+  metadata  Json?
+  /// `null` while unread; set when the user opens the notification (or hits
+  /// "mark all read"). Indexed for the unread-count count query.
+  readAt    DateTime?        @map("read_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  // Phase 6 — bell dropdown ordering: most recent first per user.
+  @@index([userId, createdAt(sort: Desc)])
+  // Phase 6 — `WHERE userId = ? AND readAt IS NULL` is the hot path for
+  // the unread-count badge. Composite covers both unread queries +
+  // list-pagination with the recency above.
+  @@index([userId, readAt])
+  @@map("notification")
 }
 
 model PasswordResetToken {
@@ -167,6 +387,18 @@ model UserProfile {
   professionalProfile Json?
   /// Opaque JSON matching MediAI `MedicalHistoryData`.
   medicalHistory        Json?
+
+  /// Phase 5 — canonical specialty for matching. Only meaningful when
+  /// `role = professional`. Null on personal users *and* on professionals
+  /// whose free-text `professionalProfile.specialty` hasn't been mapped yet.
+  /// Once set, the matching layer uses this exclusively; the free-text
+  /// remains the display label.
+  medicalSpecialty MedicalSpecialty? @map("medical_specialty")
+
+  /// Phase 5 — patient's primary health concerns (multi-select). Only
+  /// meaningful when `role = personal`. The /top-doctors filter expands each
+  /// category into a list of specialties via the in-app mapping table.
+  primaryConditions ConditionCategory[] @default([]) @map("primary_conditions")
   /// Replaces `mediai-ai-doctor-setup-completed` in localStorage when synced.
   aiDoctorSetupCompleted Boolean                 @default(false)
 
@@ -188,6 +420,10 @@ model UserProfile {
   updatedAt             DateTime @updatedAt
 
   @@index([verificationStatus])
+  // Phase 5 — used by smart-matching to fetch verified professionals filtered
+  // by canonical specialty. Always paired with `role = professional` +
+  // `verificationStatus = verified` in the query.
+  @@index([role, verificationStatus, medicalSpecialty])
 }
 
 /// Optional persistence for POST /api/chat/report-issue.
@@ -510,12 +746,56 @@ model ConsultationBooking {
   chapaTxRef         String?                   @unique @map("chapa_tx_ref")
   chapaReference     String?                   @map("chapa_reference")
   paidAt             DateTime?                 @map("paid_at")
+
+  // Phase 3 — scheduling. `scheduledFor` is nullable for bookings created
+  // before Phase 3 shipped (those rows are legacy + unscheduled).
+  /// UTC start of the appointment. Picked by the patient from the doctor's
+  /// computed slot feed; the booking-creation endpoint validates that the
+  /// timestamp aligns with a real generated slot.
+  scheduledFor       DateTime?                 @map("scheduled_for")
+  /// Length of the appointment in minutes. Defaults to 30; copied from the
+  /// matching `WeeklyAvailabilityRule.slotDurationMinutes` at creation.
+  durationMinutes    Int                       @default(30) @map("duration_minutes")
+
+  // Phase 3 — lifecycle audit trail. Each transition stamps its own column
+  // so downstream analytics doesn't have to derive timestamps from the
+  // mutable `updatedAt`.
+  approvedAt           DateTime?               @map("approved_at")
+  rejectedAt           DateTime?               @map("rejected_at")
+  completedAt          DateTime?               @map("completed_at")
+  missedAt             DateTime?               @map("missed_at")
+  cancelledAt          DateTime?               @map("cancelled_at")
+  /// Internal-only reason the doctor entered when rejecting. Surfaced to
+  /// the patient as-is on their booking detail page.
+  doctorDecisionReason String?                 @db.VarChar(500) @map("doctor_decision_reason")
+  /// Who pressed cancel (patient or doctor). FK is loose (no relation field)
+  /// so we don't have to add a third User relation just for analytics —
+  /// joins happen in the service layer when we need to render names.
+  cancelledByUserId    String?                 @map("cancelled_by_user_id")
+  /// Free-text reason supplied at cancel time.
+  cancelReason         String?                 @db.VarChar(500) @map("cancel_reason")
+  /// Refund bookkeeping (placeholder until finance integration).
+  refundStatus         ConsultationRefundStatus @default(none) @map("refund_status")
+
+  /// Phase 4 — video/meeting link the doctor attaches when approving (or
+  /// later via PATCH /professional/bookings/:id/meeting-link). Surfaced to
+  /// the patient only once the booking is `approved` (or further); always
+  /// hidden while the booking is still pending payment / decision.
+  meetingLink          String?                 @db.VarChar(1000) @map("meeting_link")
+  /// When the meeting link was last written. Audit-only.
+  meetingLinkSetAt     DateTime?               @map("meeting_link_set_at")
+
   createdAt          DateTime                  @default(now()) @map("created_at")
   updatedAt          DateTime                  @updatedAt @map("updated_at")
 
   @@index([patientUserId, createdAt(sort: Desc)])
   @@index([topDoctorId, createdAt(sort: Desc)])
   @@index([status, createdAt(sort: Desc)])
+  // Phase 3 — fast slot-overlap query for `AvailabilityService.computeSlots`.
+  @@index([topDoctorId, scheduledFor])
+  // Phase 3 — `GET /professional/booking-requests` filters by
+  // `(top_doctor_id, status='pending_doctor_approval')`.
+  @@index([topDoctorId, status])
   @@map("consultation_booking")
 }
 
@@ -566,4 +846,133 @@ model SubscriptionPlan {
 
   @@index([active, sortOrder])
   @@map("subscription_plan")
+
+  // Phase 7 — when present, `subscriptions` enumerates every Chapa checkout
+  // the plan has ever produced (one row per attempt; only the latest
+  // `active` row with `endsAt > now()` actually grants access).
+  subscriptions UserSubscription[]
+}
+
+/// Phase 7 — per-user subscription to a `SubscriptionPlan`. Created when the
+/// patient picks Lite/Pro on `/pricing`; Chapa redirects, the webhook /
+/// callback flips `status` to `active` and stamps `startsAt`/`endsAt`. The
+/// personal-chat gate reads this table (plus the legacy
+/// `UserAssistantAccess`) to decide whether to allow the request.
+///
+/// We deliberately mirror `UserAssistantAccess` so the Chapa lookup-by-txRef
+/// inside `PaymentsService.finalizeByVerifiedTransaction` can match either
+/// kind without an extra round-trip — the only difference is the txRef
+/// prefix (`mediai-subscription-…` vs `mediai-assistant-…`).
+model UserSubscription {
+  id               String               @id @default(uuid())
+  userId           String               @map("user_id")
+  user             User                 @relation("UserSubscriptions", fields: [userId], references: [id], onDelete: Cascade)
+  planId           String               @map("plan_id")
+  plan             SubscriptionPlan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  interval         SubscriptionInterval @default(monthly)
+  status           SubscriptionStatus   @default(pending)
+  /// Globally unique Chapa transaction reference. Stamped at initiate time
+  /// even for the Free auto-grant path so the post-payment lookup is
+  /// uniform across plans.
+  txRef            String               @unique @map("tx_ref")
+  chapaCheckoutUrl String?              @map("chapa_checkout_url")
+  chapaReference   String?              @map("chapa_reference")
+  amountCents      Int                  @map("amount_cents")
+  /// Snapshot of the plan currency at checkout time so a later admin edit
+  /// to the plan can't retroactively rewrite a paid receipt.
+  currency         String               @default("ETB") @db.VarChar(3)
+  startsAt         DateTime?            @map("starts_at")
+  endsAt           DateTime?            @map("ends_at")
+  paidAt           DateTime?            @map("paid_at")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  // Fast "is this user currently subscribed?" — the gate filters by
+  // `userId, status='active', endsAt > now()` on every personal-chat call.
+  @@index([userId, status, endsAt])
+  @@index([planId, createdAt])
+  @@map("user_subscription")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — doctor availability scheduling
+//
+// Three thin tables that together describe when a doctor takes appointments:
+//
+//   1. `WeeklyAvailabilityRule` — recurring weekly windows (e.g. "Mon 9am-5pm,
+//      30-minute slots"). Multiple rows per day are allowed so you can encode
+//      lunch breaks as gaps between two rules.
+//   2. `DoctorUnavailableDate` — one-off blackout *days* (vacations, sick
+//      days, holidays). Half-day blocks aren't supported yet; carve them out
+//      of the weekly rule pattern instead.
+//   3. `DoctorCapacity` — soft caps (`maxAppointmentsPerDay`,
+//      `defaultConsultationType`) and per-doctor consultation method opt-in.
+//
+// The bookable-slots query subtracts both `DoctorUnavailableDate`s and
+// existing `ConsultationBooking`s in any "active" status, then applies the
+// daily cap. See `AvailabilityService.computeSlots()` for the algorithm.
+// ---------------------------------------------------------------------------
+
+model WeeklyAvailabilityRule {
+  id                  String   @id @default(uuid())
+  doctorUserId        String   @map("doctor_user_id")
+  doctor              User     @relation("DoctorAvailabilityRules", fields: [doctorUserId], references: [id], onDelete: Cascade)
+  /// 0 = Sunday … 6 = Saturday. Mirrors JS `Date.getDay()`.
+  dayOfWeek           Int      @map("day_of_week") @db.SmallInt
+  /// Inclusive start of the window, expressed as minutes since 00:00 local time.
+  startTimeMinutes    Int      @map("start_time_minutes")
+  /// Exclusive end of the window. Must be `> startTimeMinutes`.
+  endTimeMinutes      Int      @map("end_time_minutes")
+  /// Length of each generated slot (e.g. 30 = 30 minutes). Must divide the
+  /// window evenly or the trailing partial slot is dropped.
+  slotDurationMinutes Int      @map("slot_duration_minutes")
+  /// IANA tz name (`Africa/Addis_Ababa`, `UTC`, …). Slot generation interprets
+  /// `startTimeMinutes`/`endTimeMinutes` in this zone so daylight-saving
+  /// transitions are handled by the date library, not by us.
+  timezone            String   @db.VarChar(64)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@index([doctorUserId, dayOfWeek])
+  @@map("weekly_availability_rule")
+}
+
+model DoctorUnavailableDate {
+  id           String   @id @default(uuid())
+  doctorUserId String   @map("doctor_user_id")
+  doctor       User     @relation("DoctorUnavailableDates", fields: [doctorUserId], references: [id], onDelete: Cascade)
+  /// Calendar date the doctor is *fully* unavailable (00:00–24:00 local).
+  /// Stored as a `Date` (no time component); compared by ISO `YYYY-MM-DD`.
+  date         DateTime @db.Date
+  /// Optional free-text label that surfaces in admin/audit views only — never
+  /// to patients.
+  reason       String?  @db.VarChar(280)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([doctorUserId, date])
+  @@index([doctorUserId, date])
+  @@map("doctor_unavailable_date")
+}
+
+model DoctorCapacity {
+  /// 1:1 with `User` — only `professional` users are expected to have a row,
+  /// but we don't enforce it at the DB level (the role lives on
+  /// `UserProfile`).
+  doctorUserId             String           @id @map("doctor_user_id")
+  doctor                   User             @relation("DoctorCapacity", fields: [doctorUserId], references: [id], onDelete: Cascade)
+  /// Hard upper bound on the number of bookings the doctor will accept per
+  /// calendar day. Slot generation drops slots beyond this cap. `null` = no
+  /// cap (every generated slot is offered).
+  maxAppointmentsPerDay    Int?             @map("max_appointments_per_day")
+  /// Pre-selected consultation type a patient sees when first opening the
+  /// booking form. Patients can still override per-booking.
+  defaultConsultationType  ConsultationType @default(video) @map("default_consultation_type")
+  /// Which consultation methods this doctor accepts. JSON `string[]` of
+  /// `ConsultationType` values; an empty array means "every type". Stored as
+  /// JSON to stay forward-compatible if we add more types later.
+  acceptedConsultationTypes Json            @default("[]") @map("accepted_consultation_types")
+  createdAt                DateTime         @default(now()) @map("created_at")
+  updatedAt                DateTime         @updatedAt @map("updated_at")
+
+  @@map("doctor_capacity")
 }

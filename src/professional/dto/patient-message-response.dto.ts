@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class PatientMessageDto {
   @ApiProperty()
@@ -32,4 +32,11 @@ export class PatientMessageThreadDto {
 
   @ApiProperty({ type: [PatientMessageDto] })
   messages: PatientMessageDto[];
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Phase 4 — ISO timestamp when the consultation chat window closes for this doctor↔patient pair. Null when no booking is currently active (the doctor can still read past messages but cannot send new ones until the patient books a follow-up).',
+  })
+  chatWindowEndsAt: string | null;
 }

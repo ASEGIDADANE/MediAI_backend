@@ -52,10 +52,9 @@ export class ProfessionalController {
 
   @Get('patients')
   @ApiOperation({
-    summary:
-      'List registered patients (personal-role users) for the calling doctor',
+    summary: "List the calling doctor's patients (relationship-gated)",
     description:
-      'Returns all users with `UserProfile.role === personal` (excluding the caller). Caller must be `professional`. Supports paging and free-text search by name/email.',
+      "Returns only patients with whom the calling doctor has at least one active `ConsultationBooking` (status `paid` or `confirmed`). All other patients in the system are hidden — a verified doctor without bookings sees an empty list. Caller must be `professional`. Supports paging and free-text search by name/email scoped to the doctor's own patients.",
   })
   @ApiResponse({ status: 200, type: ListPatientsResponseDto })
   @ApiResponse({

@@ -53,6 +53,13 @@ export class ThreadDetailDto {
 
   @ApiProperty({ type: [ThreadMessageDto] })
   messages: ThreadMessageDto[];
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Phase 4 — ISO timestamp when the consultation chat window closes. Null when no booking is currently active (chat is read-only — the patient must book a follow-up to keep messaging). The frontend uses this to disable the composer and show a countdown when the window is about to expire.',
+  })
+  chatWindowEndsAt: string | null;
 }
 
 /**

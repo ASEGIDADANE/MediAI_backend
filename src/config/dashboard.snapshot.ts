@@ -34,16 +34,20 @@ export const dashboardCards = [
     accent: 'facilities' as const,
   },
   {
+    // Keep placeholder hrefs unique — the frontend's
+    // `mergeDashboardConfigWithFallback` keys cards by `href`, so two
+    // placeholders sharing `#` would collapse into one slot and render
+    // the same card twice (root cause of the duplicate Health Reports tile).
     title: 'Check Up Plan',
     description: 'Coming Soon',
-    href: '#',
+    href: '#check-up-plan',
     accent: 'bot' as const,
     muted: true,
   },
   {
     title: 'Health Reports',
     description: 'Coming Soon',
-    href: '#',
+    href: '#health-reports',
     accent: 'facilities' as const,
     muted: true,
   },

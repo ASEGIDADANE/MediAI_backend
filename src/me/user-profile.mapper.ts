@@ -46,6 +46,10 @@ export type DashboardProfileResponse = {
   professionalProfile?: ProfessionalProfileJson;
   /** Only set for `role=professional` users. */
   verification?: DoctorVerificationSnapshot;
+  /** Phase 5 — see `UserProfile.primaryConditions` (patient-only). */
+  primaryConditions: string[];
+  /** Phase 5 — see `UserProfile.medicalSpecialty` (doctor-only; null otherwise). */
+  medicalSpecialty: string | null;
 };
 
 function fromPrismaVerificationStatus(
@@ -106,6 +110,8 @@ export function userProfileToDashboardProfile(
       ? (prof as ProfessionalProfileJson)
       : undefined,
     verification,
+    primaryConditions: p.primaryConditions ?? [],
+    medicalSpecialty: p.medicalSpecialty ?? null,
   };
 }
 

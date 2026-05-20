@@ -105,7 +105,7 @@ export class ChatController {
     @CurrentUser() user: RequestUser,
     @Query() q: ChatConversationsQueryDto,
   ) {
-    return this.payments.requireActiveAssistantAccess(user.id).then(() =>
+    return this.payments.requireActiveSubscription(user.id).then(() =>
       this.chatRead.listPersonalConversations(
       user.id,
       q.page ?? 1,
@@ -131,7 +131,7 @@ export class ChatController {
     @Param('conversationId') conversationId: string,
     @Query() q: ChatMessagesQueryDto,
   ) {
-    return this.payments.requireActiveAssistantAccess(user.id).then(() =>
+    return this.payments.requireActiveSubscription(user.id).then(() =>
       this.chatRead.getPersonalMessages(
       user.id,
       conversationId,
@@ -166,7 +166,7 @@ export class ChatController {
     @CurrentUser() user: RequestUser,
     @Body() dto: PostPersonalMessageDto,
   ): Promise<PostPersonalMessageResponseDto> {
-    return this.payments.requireActiveAssistantAccess(user.id).then(() =>
+    return this.payments.requireActiveSubscription(user.id).then(() =>
       this.chatCompletion.sendPersonal(user.id, dto),
     );
   }
@@ -197,7 +197,7 @@ export class ChatController {
     res.setHeader('Connection', 'keep-alive');
     res.status(200);
     try {
-      await this.payments.requireActiveAssistantAccess(user.id);
+      await this.payments.requireActiveSubscription(user.id);
       const out = await this.chatCompletion.runPersonalStream(
         user.id,
         dto,

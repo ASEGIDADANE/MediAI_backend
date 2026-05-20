@@ -1,3 +1,7 @@
+import {
+  ConsultationType,
+  MedicalSpecialty,
+} from '../generated/prisma/client';
 import type { TopDoctorDto } from './dto/top-doctor-response.dto';
 
 /**
@@ -10,11 +14,21 @@ import type { TopDoctorDto } from './dto/top-doctor-response.dto';
  * and the page still renders without crashes. Where data is missing the
  * mapper returns sane defaults (`""`, `0`, `[]`) so existing UI code that
  * assumes a non-null value continues to work.
+ *
+ * Phase 5 — accepts optional structured fields from the DB row (top-level
+ * `medicalSpecialty` / `region` / `acceptedConsultationTypes`) so the
+ * matching layer can attach them without a second query.
  */
 export function userProfileRowToTopDoctorDto(row: {
   userId: string;
   preferredName: string;
   professionalProfile: unknown;
+  medicalSpecialty?: MedicalSpecialty | null;
+  region?: string | null;
+  acceptedConsultationTypes?: ConsultationType[];
+  /** Phase 5 — pre-computed UI badges from the matching layer. */
+  inRegion?: boolean;
+  matchesConditions?: boolean;
 }): TopDoctorDto {
   const prof = isObject(row.professionalProfile) ? row.professionalProfile : {};
 
@@ -24,7 +38,7 @@ export function userProfileRowToTopDoctorDto(row: {
   const specialty = asString(prof.specialty);
   const role = asNonEmptyString(prof.role) ?? specialty ?? title ?? 'Doctor';
 
-  return {
+  const dto: TopDoctorDto = {
     id: row.userId,
     name: fullName,
     role,
@@ -46,6 +60,23 @@ export function userProfileRowToTopDoctorDto(row: {
     diseases: asStringArray(prof.diseases),
     publicationsSummary: asString(prof.publicationsSummary),
   };
+
+  if (row.medicalSpecialty !== undefined) {
+    dto.medicalSpecialty = row.medicalSpecialty;
+  }
+  if (row.region !== undefined) {
+    dto.region = row.region;
+  }
+  if (row.acceptedConsultationTypes !== undefined) {
+    dto.acceptedConsultationTypes = row.acceptedConsultationTypes;
+  }
+  if (row.inRegion !== undefined) {
+    dto.inRegion = row.inRegion;
+  }
+  if (row.matchesConditions !== undefined) {
+    dto.matchesConditions = row.matchesConditions;
+  }
+  return dto;
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {

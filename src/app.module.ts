@@ -23,6 +23,8 @@ import { MessagesModule } from './messages/messages.module';
 import { SubscriptionPlansModule } from './subscription-plans/subscription-plans.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ConsultationsModule } from './consultations/consultations.module';
+import { AvailabilityModule } from './availability/availability.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -55,6 +57,8 @@ import { ConsultationsModule } from './consultations/consultations.module';
     SubscriptionPlansModule,
     PaymentsModule,
     ConsultationsModule,
+    AvailabilityModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

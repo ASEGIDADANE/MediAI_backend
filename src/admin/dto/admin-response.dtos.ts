@@ -95,7 +95,17 @@ export type AdminActivityType =
   | 'ai_doctor_setup'
   | 'data_export'
   | 'account_delete'
-  | 'support_report';
+  | 'support_report'
+  // Phase 6 — booking lifecycle audit actions surface in the admin
+  // activity feed so the support team can investigate without paging
+  // the dev team.
+  | 'appointment_approved'
+  | 'appointment_rejected'
+  | 'appointment_cancelled'
+  | 'appointment_completed'
+  | 'availability_updated'
+  | 'meeting_link_set'
+  | 'booking_created';
 
 export class AdminActivityItemDto {
   @ApiProperty({
@@ -112,6 +122,13 @@ export class AdminActivityItemDto {
       'data_export',
       'account_delete',
       'support_report',
+      'appointment_approved',
+      'appointment_rejected',
+      'appointment_cancelled',
+      'appointment_completed',
+      'availability_updated',
+      'meeting_link_set',
+      'booking_created',
     ],
   })
   type: AdminActivityType;

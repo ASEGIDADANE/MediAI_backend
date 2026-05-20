@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, UserAppRole } from '../generated/prisma/client';
+import { Prisma, SubscriptionStatus, UserAppRole } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateSubscriptionPlanBodyDto,
@@ -30,27 +30,25 @@ export class SubscriptionPlansService {
   }
 
   /**
-   * Admin read: every plan (including inactive) plus a `subscriberCount`
-   * computed as honestly as possible without a billing provider:
-   *   - "Free" tier (any plan whose lower-cased name is exactly "free"):
-   *     non-admin user count (everyone is on the free tier today).
-   *   - Every other tier: `0` until billing is integrated.
+   * Admin read: every plan (including inactive) plus a `subscriberCount`.
    *
-   * Counting non-admin users (a single COUNT) is cheap and avoids a
-   * misleading subscriber count for paid tiers.
+   * Phase 7 — `UserSubscription` now tracks per-user subscriptions, so paid
+   * tiers report a real count of distinct users with an `active` row whose
+   * `endsAt` is still in the future. The "Free" tier keeps its previous
+   * "every patient is on Free" interpretation (we count non-admin users
+   * rather than `UserSubscription` rows because users don't have to click
+   * anything to "be on Free").
    */
   async listAdmin() {
-    const [rows, freeUserCount] = await this.prisma.$transaction([
-      this.prisma.subscriptionPlan.findMany({
-        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-      }),
-      this.prisma.user.count({ where: { appRole: UserAppRole.user } }),
-    ]);
-
-    const items = rows.map((row) => {
-      const isFree = FREE_PLAN_NAMES.has(row.name.trim().toLowerCase());
-      return toSubscriptionPlanAdminDto(row, isFree ? freeUserCount : 0);
+    const rows = await this.prisma.subscriptionPlan.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
+    const items = await Promise.all(
+      rows.map(async (row) => {
+        const count = await this.subscriberCountForPlan(row);
+        return toSubscriptionPlanAdminDto(row, count);
+      }),
+    );
     return { items };
   }
 
@@ -61,11 +59,35 @@ export class SubscriptionPlansService {
     if (!row) {
       throw new NotFoundException('Plan not found');
     }
-    const isFree = FREE_PLAN_NAMES.has(row.name.trim().toLowerCase());
-    const subscriberCount = isFree
-      ? await this.prisma.user.count({ where: { appRole: UserAppRole.user } })
-      : 0;
-    return toSubscriptionPlanAdminDto(row, subscriberCount);
+    return toSubscriptionPlanAdminDto(
+      row,
+      await this.subscriberCountForPlan(row),
+    );
+  }
+
+  /**
+   * "Free" → every non-admin user (since Free is the implicit default).
+   * Anything else → distinct users with an active, non-expired
+   * `UserSubscription` row for this plan.
+   */
+  private async subscriberCountForPlan(plan: {
+    id: string;
+    name: string;
+  }): Promise<number> {
+    const isFree = FREE_PLAN_NAMES.has(plan.name.trim().toLowerCase());
+    if (isFree) {
+      return this.prisma.user.count({ where: { appRole: UserAppRole.user } });
+    }
+    const grouped = await this.prisma.userSubscription.findMany({
+      where: {
+        planId: plan.id,
+        status: SubscriptionStatus.active,
+        endsAt: { gt: new Date() },
+      },
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+    return grouped.length;
   }
 
   async create(dto: CreateSubscriptionPlanBodyDto) {
@@ -129,11 +151,10 @@ export class SubscriptionPlansService {
         where: { id },
         data,
       });
-      const isFree = FREE_PLAN_NAMES.has(row.name.trim().toLowerCase());
-      const subscriberCount = isFree
-        ? await this.prisma.user.count({ where: { appRole: UserAppRole.user } })
-        : 0;
-      return toSubscriptionPlanAdminDto(row, subscriberCount);
+      return toSubscriptionPlanAdminDto(
+        row,
+        await this.subscriberCountForPlan(row),
+      );
     } catch (e) {
       if (
         e instanceof Prisma.PrismaClientKnownRequestError &&

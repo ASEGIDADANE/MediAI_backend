@@ -318,6 +318,9 @@ async function seedSubscriptionPlansIfEmpty() {
     return;
   }
 
+  // Currency is ETB to match the Chapa checkout used on /pricing — the same
+  // gateway and currency we already charge for consultations. Prices are
+  // editable from /admin/subscriptions so the team can re-tune later.
   await prisma.subscriptionPlan.createMany({
     data: [
       {
@@ -325,8 +328,9 @@ async function seedSubscriptionPlansIfEmpty() {
         description: 'Core AI guidance and education for individuals getting started.',
         monthlyPriceCents: 0,
         yearlyPriceCents: 0,
+        currency: 'ETB',
         features: [
-          'Limited AI Doctor questions per day',
+          'General AI chat (no personal health context)',
           'Symptom guide & glossary',
           'Basic lab result explanations',
         ] as Prisma.InputJsonValue,
@@ -335,12 +339,14 @@ async function seedSubscriptionPlansIfEmpty() {
       },
       {
         name: 'Lite',
-        description: 'More daily usage and priority-friendly experience.',
-        monthlyPriceCents: 399,
-        yearlyPriceCents: 3990,
+        description: 'Unlock the personalized AI Doctor that uses your saved health context.',
+        monthlyPriceCents: 14900,
+        yearlyPriceCents: 149000,
+        currency: 'ETB',
         features: [
-          'Higher daily AI Doctor limits',
-          'Save conversation history longer',
+          'Personalized AI Doctor (uses your saved profile)',
+          'Daily message quota generous for routine check-ins',
+          'Conversation history kept for the full subscription window',
           'Email support',
         ] as Prisma.InputJsonValue,
         sortOrder: 1,
@@ -349,10 +355,12 @@ async function seedSubscriptionPlansIfEmpty() {
       {
         name: 'Pro',
         description: 'For active patients coordinating care and second opinions.',
-        monthlyPriceCents: 999,
-        yearlyPriceCents: 9990,
+        monthlyPriceCents: 29900,
+        yearlyPriceCents: 299000,
+        currency: 'ETB',
         features: [
-          'Top usage tier for AI Doctor',
+          'Everything in Lite',
+          'Top-tier daily limits',
           'Second-opinion workflow helpers',
           'Export-friendly summaries',
         ] as Prisma.InputJsonValue,

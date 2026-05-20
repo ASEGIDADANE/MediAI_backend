@@ -27,6 +27,7 @@ import {
   userProfileToDashboardProfile,
 } from './user-profile.mapper';
 import { readBothConsultationFeesMajor } from '../consultations/consultation-profile-fees.util';
+import { inferMedicalSpecialty } from '../consultations/consultation-matching.constants';
 
 const MAX_MEDICAL_JSON = 100_000;
 
@@ -90,6 +91,26 @@ export class MeService {
         );
       }
       data.professionalProfile = merged as Prisma.InputJsonValue;
+
+      // Phase 5 — best-effort auto-mapping. If the doctor is updating the
+      // free-text `specialty` and they haven't yet picked a canonical value
+      // (and the patch didn't explicitly set one), try to infer it. This
+      // gets existing verified doctors onto the matching layer the moment
+      // they touch their profile again, without forcing them to pick from
+      // the dropdown.
+      const inferred =
+        existing.medicalSpecialty === null &&
+        dto.medicalSpecialty === undefined &&
+        typeof (dto.professionalProfile as Record<string, unknown>)
+          .specialty === 'string'
+          ? inferMedicalSpecialty(
+              (dto.professionalProfile as Record<string, unknown>)
+                .specialty as string,
+            )
+          : null;
+      if (inferred) {
+        data.medicalSpecialty = inferred;
+      }
     }
 
     if (dto.preferredName !== undefined) {
@@ -135,6 +156,25 @@ export class MeService {
 
     if (dto.preferredFeature !== undefined) {
       data.preferredFeature = toPrismaPreferredFeature(dto.preferredFeature);
+    }
+
+    // Phase 5 — smart-matching fields. Both are role-gated:
+    //   * Only the doctor's `medicalSpecialty` matters for matching, so we
+    //     silently ignore patient writes to it.
+    //   * `primaryConditions` is patient-only for the same reason.
+    // Silent-ignore (instead of 400) keeps onboarding wizards simple: the
+    // frontend can always include both keys regardless of role.
+    if (
+      dto.medicalSpecialty !== undefined &&
+      existing.role === OnboardingUserRole.professional
+    ) {
+      data.medicalSpecialty = dto.medicalSpecialty;
+    }
+    if (
+      dto.primaryConditions !== undefined &&
+      existing.role === OnboardingUserRole.personal
+    ) {
+      data.primaryConditions = { set: dto.primaryConditions };
     }
 
     const msAfter =

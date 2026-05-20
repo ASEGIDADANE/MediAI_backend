@@ -30,7 +30,24 @@ const DEFAULT_RADIUS_KM = 10;
 const MAX_RADIUS_KM = 100;
 const FETCH_TIMEOUT_MS = 12_000;
 const CACHE_TTL_MS = 10 * 60_000; // 10 minutes
-const ENDPOINT = 'https://overpass-api.de/api/interpreter';
+/**
+ * If every live Overpass mirror fails but we still have a cached result for
+ * the same coords (just expired), we'll serve that rather than nothing. Cap
+ * how stale we're willing to go so we don't pretend yesterday's data is
+ * fresh.
+ */
+const STALE_CACHE_GRACE_MS = 60 * 60_000; // 1 hour past expiry
+/**
+ * Public Overpass mirrors, tried in order. Hitting the main endpoint
+ * (`overpass-api.de`) over a flaky IPv6 path commonly yields an
+ * AggregateError; a quick failover to `kumi.systems` or `private.coffee`
+ * usually succeeds. All three speak the same Overpass QL dialect.
+ */
+const ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+] as const;
 const USER_AGENT = 'MediAI-FacilityLocator/1.0';
 
 /**
@@ -81,13 +98,31 @@ export class OverpassService {
       amenities,
     });
 
-    let payload: OverpassResponse;
-    try {
-      payload = await this.callOverpass(query);
-    } catch (err) {
+    let payload: OverpassResponse | null = null;
+    const failures: { endpoint: string; detail: string }[] = [];
+    for (const endpoint of ENDPOINTS) {
+      try {
+        payload = await this.callOverpass(endpoint, query);
+        break;
+      } catch (err) {
+        failures.push({ endpoint, detail: describeError(err) });
+      }
+    }
+
+    if (!payload) {
+      const summary = failures
+        .map((f) => `${f.endpoint} -> ${f.detail}`)
+        .join('; ');
       this.logger.warn(
-        `Overpass call failed (lat=${args.lat}, lng=${args.lng}, r=${radiusKm}km): ${describeError(err)}`,
+        `Overpass call failed (lat=${args.lat}, lng=${args.lng}, r=${radiusKm}km): ${summary}`,
       );
+      // Better to serve slightly-stale neighbourhood data than an empty list
+      // when the network blip is transient. The cache stores DTOs we
+      // already mapped earlier, so this is essentially free.
+      const stale = this.cache.get(cacheKey);
+      if (stale && stale.expiresAt + STALE_CACHE_GRACE_MS > Date.now()) {
+        return this.applyTextFilter(stale.data, args.q);
+      }
       return [];
     }
 
@@ -111,9 +146,18 @@ export class OverpassService {
    * fresh `curl` from the same machine still works. Using `https` with
    * `Connection: close` opens a brand-new TCP connection per call, which
    * is fine for an external API we hit at most a few times a minute.
+   *
+   * `family: 4` pins the lookup to IPv4. Node's default lookup order on
+   * recent versions returns AAAA records first, and on a host with no
+   * working IPv6 route to overpass-api.de (very common on home/ISP
+   * networks) every connect attempt yields the opaque "AggregateError"
+   * we were seeing in the logs. Forcing IPv4 sidesteps that entirely.
    */
-  private callOverpass(query: string): Promise<OverpassResponse> {
-    const url = new URL(ENDPOINT);
+  private callOverpass(
+    endpoint: string,
+    query: string,
+  ): Promise<OverpassResponse> {
+    const url = new URL(endpoint);
     const body = `data=${encodeURIComponent(query)}`;
     return new Promise<OverpassResponse>((resolve, reject) => {
       const req = httpsRequest(
@@ -123,6 +167,7 @@ export class OverpassService {
           hostname: url.hostname,
           port: url.port || 443,
           path: url.pathname + url.search,
+          family: 4,
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             'Content-Length': Buffer.byteLength(body),
@@ -318,8 +363,20 @@ function haversineKm(
 
 function describeError(err: unknown): string {
   if (!(err instanceof Error)) return 'unknown error';
-  const cause = (err as Error & { cause?: unknown }).cause;
   let detail = err.message || err.name || 'unknown error';
+  // `AggregateError` (thrown when Node tries multiple resolved addresses and
+  // every one fails to connect) only carries useful info on `.errors`, not
+  // on `.cause`. Without this branch the log line was literally just
+  // "AggregateError" with no diagnostic — exactly what we hit in prod.
+  const aggregate = err as Error & { errors?: unknown };
+  if (Array.isArray(aggregate.errors) && aggregate.errors.length > 0) {
+    const inner = aggregate.errors
+      .map((e) => describeSingle(e))
+      .join(' | ');
+    detail += ` (causes: ${inner})`;
+    return detail;
+  }
+  const cause = (err as Error & { cause?: unknown }).cause;
   if (cause instanceof Error) {
     const code = (cause as Error & { code?: string }).code;
     detail += ` (cause: ${cause.name}${code ? ` ${code}` : ''}: ${cause.message})`;
@@ -331,6 +388,22 @@ function describeError(err: unknown): string {
     }
   }
   return detail;
+}
+
+function describeSingle(err: unknown): string {
+  if (!(err instanceof Error)) {
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
+  }
+  const code = (err as Error & { code?: string; address?: string; port?: number })
+    .code;
+  const address = (err as Error & { address?: string }).address;
+  const port = (err as Error & { port?: number }).port;
+  const target = address ? ` ${address}${port ? `:${port}` : ''}` : '';
+  return `${err.name}${code ? ` ${code}` : ''}${target}: ${err.message}`;
 }
 
 function buildAddress(tags: Record<string, string>): string {

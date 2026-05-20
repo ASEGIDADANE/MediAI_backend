@@ -36,6 +36,24 @@ const MIN_AMOUNT_CENTS = 100;
 const CHAPA_CUSTOM_TITLE_MAX = 16;
 /** Chapa `customization[description]` max length (conservative). */
 const CHAPA_CUSTOM_DESCRIPTION_MAX = 500;
+/**
+ * Chapa's validation rule on `customization[title]` and
+ * `customization[description]`: "may only contain letters, numbers,
+ * hyphens, underscores, spaces, and dots". Anything else is rejected
+ * with a 400. We strip non-conforming characters at the client edge so
+ * every caller can pass a free-form display string (plan names, doctor
+ * names with accents, "interval=monthly" colons, etc) without each one
+ * having to remember the same regex.
+ *
+ * Replacement strategy: replace any disallowed run with a single space,
+ * collapse repeated spaces, then trim. This keeps the original word
+ * boundaries readable in the Chapa receipt.
+ */
+const CHAPA_CUSTOM_ALLOWED = /[^A-Za-z0-9 _.\-]+/g;
+
+function sanitizeChapaCustomString(value: string): string {
+  return value.replace(CHAPA_CUSTOM_ALLOWED, ' ').replace(/\s+/g, ' ').trim();
+}
 
 @Injectable()
 export class ChapaClient {
@@ -125,13 +143,20 @@ export class ChapaClient {
     params.set('tx_ref', input.txRef);
     params.set('callback_url', input.callbackUrl);
     params.set('return_url', input.returnUrl);
+    // Sanitize first, *then* truncate. If we truncated first and a
+    // disallowed character ended up inside the kept prefix, the sanitizer
+    // could leave us with an empty string when Chapa actually requires a
+    // non-empty value.
     params.set(
       'customization[title]',
-      input.title.trim().slice(0, CHAPA_CUSTOM_TITLE_MAX),
+      sanitizeChapaCustomString(input.title).slice(0, CHAPA_CUSTOM_TITLE_MAX),
     );
     params.set(
       'customization[description]',
-      input.description.trim().slice(0, CHAPA_CUSTOM_DESCRIPTION_MAX),
+      sanitizeChapaCustomString(input.description).slice(
+        0,
+        CHAPA_CUSTOM_DESCRIPTION_MAX,
+      ),
     );
     // Server-side initialize uses Authorization: Bearer only. Do not send
     // CHAPA_PUBLIC_KEY as `key` here — it often causes Chapa HTTP 400 when

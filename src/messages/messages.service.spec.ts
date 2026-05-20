@@ -29,6 +29,21 @@ function makePrisma() {
       create: jest.fn(),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
+    // Phase 4 chat-gating: `sendMessage` looks up booking candidates and
+    // then a JS time-window helper decides whether to allow the send.
+    // Default: one approved booking with a future slot — i.e. window open.
+    consultationBooking: {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 'booking-1',
+          status: 'approved',
+          scheduledFor: new Date(Date.now() + 60 * 60 * 1000),
+          durationMinutes: 30,
+          completedAt: null,
+          createdAt: new Date(),
+        },
+      ]),
+    },
   };
 }
 
@@ -113,7 +128,7 @@ describe('MessagesService', () => {
     expect(out.items[0].lastMessagePreview).toContain('Hello');
   });
 
-  it('listThreads (doctor) filters by doctorUserId so each doctor only sees their own threads', async () => {
+  it('listThreads (doctor) filters by doctorUserId AND requires an active booking with each patient', async () => {
     const prisma = makePrisma();
     prisma.userProfile.findUnique.mockResolvedValue({
       role: 'professional',
@@ -141,14 +156,7 @@ describe('MessagesService', () => {
     const svc = await buildService(prisma);
     const out = await svc.listThreads(DOCTOR_ID);
 
-    expect(prisma.doctorPatientThread.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          doctorUserId: DOCTOR_ID,
-          messages: { some: {} },
-        },
-      }),
-    );
+    // Mapping the result still works as before…
     expect(out.items[0]).toMatchObject({
       threadId: THREAD_ID,
       doctorUserId: DOCTOR_ID,
@@ -156,9 +164,25 @@ describe('MessagesService', () => {
       patientName: 'Kiyar Ali',
       lastMessageSender: 'doctor',
     });
+
+    // …but the where-clause must now include the relationship gate. We
+    // assert on its shape via serialization to keep this resilient to small
+    // refactors of the literal.
+    const call = prisma.doctorPatientThread.findMany.mock.calls[0][0] as {
+      where: unknown;
+    };
+    const flat = JSON.stringify(call.where);
+    expect(flat).toContain(DOCTOR_ID);
+    expect(flat).toContain('consultationBookings');
+    // Phase 4 — chat is gated to approved/completed/legacy-confirmed only.
+    // `paid` (transient post-payment, pre-doctor-decision) is deliberately
+    // excluded so a patient can't message a doctor before approval.
+    expect(flat).toContain('approved');
+    expect(flat).toContain('confirmed');
+    expect(flat).not.toContain('"paid"');
   });
 
-  it('getUnreadCount counts unread inbound messages, scoped by caller role', async () => {
+  it('getUnreadCount (doctor) excludes threads with no active booking from the badge total', async () => {
     const prisma = makePrisma();
     prisma.userProfile.findUnique.mockResolvedValue({
       role: 'professional',
@@ -167,15 +191,35 @@ describe('MessagesService', () => {
 
     const svc = await buildService(prisma);
     const out = await svc.getUnreadCount(DOCTOR_ID);
+    expect(out).toEqual({ count: 7 });
+
+    // The count query must be gated by the same booking filter as the inbox,
+    // so the navbar badge can't disagree with the thread list.
+    const call = prisma.doctorPatientMessage.count.mock.calls[0][0] as {
+      where: unknown;
+    };
+    const flat = JSON.stringify(call.where);
+    expect(flat).toContain('consultationBookings');
+    expect(flat).toContain('approved');
+    expect(flat).not.toContain('"paid"');
+  });
+
+  it('getUnreadCount (patient) is NOT gated by bookings — patients keep full visibility', async () => {
+    const prisma = makePrisma();
+    prisma.userProfile.findUnique.mockResolvedValue({ role: 'personal' });
+    prisma.doctorPatientMessage.count.mockResolvedValue(3);
+
+    const svc = await buildService(prisma);
+    const out = await svc.getUnreadCount(PATIENT_ID);
+    expect(out).toEqual({ count: 3 });
 
     expect(prisma.doctorPatientMessage.count).toHaveBeenCalledWith({
       where: {
         readAt: null,
-        NOT: { senderUserId: DOCTOR_ID },
-        thread: { doctorUserId: DOCTOR_ID },
+        NOT: { senderUserId: PATIENT_ID },
+        thread: { patientUserId: PATIENT_ID },
       },
     });
-    expect(out).toEqual({ count: 7 });
   });
 
   it('listThreads marks the patient as the last sender when they wrote it', async () => {
@@ -344,6 +388,7 @@ describe('MessagesService', () => {
     prisma.doctorPatientThread.findUnique.mockResolvedValue({
       id: THREAD_ID,
       patientUserId: PATIENT_ID,
+      doctorUserId: DOCTOR_ID,
       doctor: doctorRow(),
     });
     prisma.doctorPatientThread.update.mockResolvedValue({});
@@ -359,6 +404,21 @@ describe('MessagesService', () => {
     const svc = await buildService(prisma);
     const dto = await svc.sendMessage(PATIENT_ID, THREAD_ID, '  hi doc  ');
 
+    // Phase 4 — chat-gating: the service must look up bookings with this
+    // specific doctor and confirm the consultation window is open before
+    // letting the message land.
+    expect(prisma.consultationBooking.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patientUserId: PATIENT_ID,
+          topDoctorId: DOCTOR_ID,
+          status: expect.objectContaining({
+            in: expect.arrayContaining(['approved']),
+          }),
+        }),
+      }),
+    );
+
     expect(prisma.doctorPatientMessage.create).toHaveBeenCalledWith({
       data: { threadId: THREAD_ID, senderUserId: PATIENT_ID, body: 'hi doc' },
     });
@@ -368,5 +428,95 @@ describe('MessagesService', () => {
       mine: true,
       body: 'hi doc',
     });
+  });
+
+  it('sendMessage rejects with 403 when there is no doctor-approved booking', async () => {
+    const prisma = makePrisma();
+    prisma.doctorPatientThread.findUnique.mockResolvedValue({
+      id: THREAD_ID,
+      patientUserId: PATIENT_ID,
+      doctorUserId: DOCTOR_ID,
+      doctor: doctorRow(),
+    });
+    // No bookings at all — chat gate must trip.
+    prisma.consultationBooking.findMany.mockResolvedValue([]);
+
+    const svc = await buildService(prisma);
+    await expect(
+      svc.sendMessage(PATIENT_ID, THREAD_ID, 'hello'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    // We never reached the actual insert.
+    expect(prisma.doctorPatientMessage.create).not.toHaveBeenCalled();
+    expect(prisma.doctorPatientThread.update).not.toHaveBeenCalled();
+  });
+
+  it('sendMessage rejects with 403 when the booking exists but its consultation window has expired', async () => {
+    const prisma = makePrisma();
+    prisma.doctorPatientThread.findUnique.mockResolvedValue({
+      id: THREAD_ID,
+      patientUserId: PATIENT_ID,
+      doctorUserId: DOCTOR_ID,
+      doctor: doctorRow(),
+    });
+    // Completed booking, but the 24h post-completion grace has long passed.
+    prisma.consultationBooking.findMany.mockResolvedValue([
+      {
+        id: 'booking-old',
+        status: 'completed',
+        scheduledFor: new Date('2025-01-01T09:00:00Z'),
+        durationMinutes: 30,
+        completedAt: new Date('2025-01-01T09:30:00Z'),
+        createdAt: new Date('2024-12-25T10:00:00Z'),
+      },
+    ]);
+
+    const svc = await buildService(prisma);
+    await expect(
+      svc.sendMessage(PATIENT_ID, THREAD_ID, 'hello'),
+    ).rejects.toThrow(/book a follow-up/i);
+    expect(prisma.doctorPatientMessage.create).not.toHaveBeenCalled();
+  });
+
+  it('getThread returns chatWindowEndsAt computed from the latest active booking', async () => {
+    const prisma = makePrisma();
+    prisma.doctorPatientThread.findUnique.mockResolvedValue({
+      id: THREAD_ID,
+      patientUserId: PATIENT_ID,
+      doctorUserId: DOCTOR_ID,
+      doctor: doctorRow(),
+    });
+    const futureSlot = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    prisma.consultationBooking.findMany.mockResolvedValue([
+      {
+        id: 'booking-future',
+        status: 'approved',
+        scheduledFor: futureSlot,
+        durationMinutes: 30,
+        completedAt: null,
+        createdAt: new Date(),
+      },
+    ]);
+
+    const svc = await buildService(prisma);
+    const detail = await svc.getThread(PATIENT_ID, THREAD_ID, 10);
+    // Window closes at slot_end + 30 min.
+    const expectedClose = new Date(
+      futureSlot.getTime() + 30 * 60 * 1000 + 30 * 60 * 1000,
+    ).toISOString();
+    expect(detail.chatWindowEndsAt).toBe(expectedClose);
+  });
+
+  it('getThread exposes chatWindowEndsAt=null when no booking is active', async () => {
+    const prisma = makePrisma();
+    prisma.doctorPatientThread.findUnique.mockResolvedValue({
+      id: THREAD_ID,
+      patientUserId: PATIENT_ID,
+      doctorUserId: DOCTOR_ID,
+      doctor: doctorRow(),
+    });
+    prisma.consultationBooking.findMany.mockResolvedValue([]);
+    const svc = await buildService(prisma);
+    const detail = await svc.getThread(PATIENT_ID, THREAD_ID, 10);
+    expect(detail.chatWindowEndsAt).toBeNull();
   });
 });

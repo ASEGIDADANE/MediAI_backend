@@ -56,6 +56,35 @@ const AUDIT_ACTION_DESCRIPTOR: Record<
     type: 'account_delete',
     verb: 'started account deletion',
   },
+  // Phase 6 — booking lifecycle.
+  [AccountAuditAction.appointment_approved]: {
+    type: 'appointment_approved',
+    verb: 'approved a consultation request',
+  },
+  [AccountAuditAction.appointment_rejected]: {
+    type: 'appointment_rejected',
+    verb: 'rejected a consultation request',
+  },
+  [AccountAuditAction.appointment_cancelled]: {
+    type: 'appointment_cancelled',
+    verb: 'cancelled a consultation',
+  },
+  [AccountAuditAction.appointment_completed]: {
+    type: 'appointment_completed',
+    verb: 'marked a consultation complete',
+  },
+  [AccountAuditAction.availability_updated]: {
+    type: 'availability_updated',
+    verb: 'updated their availability',
+  },
+  [AccountAuditAction.meeting_link_set]: {
+    type: 'meeting_link_set',
+    verb: 'attached a meeting link',
+  },
+  [AccountAuditAction.consultation_booking_created]: {
+    type: 'booking_created',
+    verb: 'submitted a consultation request',
+  },
 };
 
 type RawProfile = {

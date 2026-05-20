@@ -1,6 +1,9 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { OnboardingUserRole } from '../generated/prisma/client';
+import {
+  ConsultationBookingStatus,
+  OnboardingUserRole,
+} from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MeService } from '../me/me.service';
 import { ProfessionalService } from './professional.service';
@@ -13,6 +16,7 @@ function makePrisma(overrides: Partial<Record<string, unknown>> = {}) {
     $transaction: (ops: Promise<unknown>[]) => Promise.all(ops),
     user: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),
       count: jest.fn().mockResolvedValue(0),
     },
@@ -29,6 +33,21 @@ function makePrisma(overrides: Partial<Record<string, unknown>> = {}) {
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn(),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    // Phase 4 — doctor's `sendMessage` runs `assertChatWindowOpen` which
+    // looks up bookings. Default: one approved future-slot booking so the
+    // window is open; chat-locked tests override.
+    consultationBooking: {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 'booking-1',
+          status: ConsultationBookingStatus.approved,
+          scheduledFor: new Date(Date.now() + 60 * 60 * 1000),
+          durationMinutes: 30,
+          completedAt: null,
+          createdAt: new Date(),
+        },
+      ]),
     },
     ...overrides,
   };
@@ -68,11 +87,14 @@ describe('ProfessionalService', () => {
     expect(prisma.user.findMany).not.toHaveBeenCalled();
   });
 
-  it('listPatients excludes the caller and only returns personal users', async () => {
+  it('listPatients only returns patients with an active booking and gates the SQL where-clause', async () => {
     const prisma = makePrisma();
     prisma.userProfile.findUnique.mockResolvedValue({
       role: OnboardingUserRole.professional,
     });
+    // Repository returns the patient because the where-clause filtered for
+    // active bookings; the service must not do any additional filtering of
+    // its own.
     prisma.user.findMany.mockResolvedValue([
       {
         id: PATIENT_ID,
@@ -98,27 +120,67 @@ describe('ProfessionalService', () => {
     expect(res.items[0]).toMatchObject({
       id: PATIENT_ID,
       preferredName: 'Sara',
-      age: '31',
-      sexAtBirth: 'female',
       hasMedicalHistory: true,
-      lastActivityAt: null,
     });
 
+    // The where-clause itself must (a) exclude the caller, (b) restrict to
+    // `personal` users, and (c) require at least one active booking with
+    // this doctor — that "AND" is the privacy gate.
     const findMany = prisma.user.findMany;
-    const where = (findMany.mock.calls[0][0] as { where: unknown }).where as {
-      id: { not: string };
-      profile: { is: { role: string } };
-    };
-    expect(where.id.not).toBe(DOCTOR_ID);
-    expect(where.profile.is.role).toBe(OnboardingUserRole.personal);
+    const where = (findMany.mock.calls[0][0] as { where: { AND: unknown[] } })
+      .where;
+    const flat = JSON.stringify(where);
+    expect(flat).toContain(DOCTOR_ID);
+    expect(flat).toContain('consultationBookings');
+    // Phase 4 — "active relationship" tightened to require an explicit
+    // doctor approval. Transient `paid` no longer counts; new approved
+    // status and legacy `confirmed` do.
+    expect(flat).toContain(ConsultationBookingStatus.approved);
+    expect(flat).toContain(ConsultationBookingStatus.confirmed);
+    expect(flat).not.toContain(`"${ConsultationBookingStatus.paid}"`);
+    expect(flat).toContain(OnboardingUserRole.personal);
   });
 
-  it('sendMessage creates the thread on first send and persists the message', async () => {
+  it('listPatients returns an empty list when the doctor has no active bookings', async () => {
     const prisma = makePrisma();
     prisma.userProfile.findUnique.mockResolvedValue({
       role: OnboardingUserRole.professional,
     });
-    prisma.user.findUnique.mockResolvedValue({
+    // No matching rows — simulates a verified doctor with zero patients.
+    prisma.user.findMany.mockResolvedValue([]);
+    prisma.user.count.mockResolvedValue(0);
+
+    const svc = await buildService(prisma);
+    const res = await svc.listPatients(DOCTOR_ID, {});
+
+    expect(res.items).toEqual([]);
+    expect(res.total).toBe(0);
+  });
+
+  it('sendMessage rejects an unrelated patient (no active booking) with 404', async () => {
+    const prisma = makePrisma();
+    prisma.userProfile.findUnique.mockResolvedValue({
+      role: OnboardingUserRole.professional,
+    });
+    // `requirePatient` uses findFirst; returning null means the relationship
+    // filter excluded the patient.
+    prisma.user.findFirst.mockResolvedValue(null);
+
+    const svc = await buildService(prisma);
+    await expect(
+      svc.sendMessage(DOCTOR_ID, PATIENT_ID, 'hi'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    // We must never reach thread creation if the relationship check failed.
+    expect(prisma.doctorPatientThread.create).not.toHaveBeenCalled();
+    expect(prisma.doctorPatientMessage.create).not.toHaveBeenCalled();
+  });
+
+  it('sendMessage creates the thread on first send and persists the message when a booking exists', async () => {
+    const prisma = makePrisma();
+    prisma.userProfile.findUnique.mockResolvedValue({
+      role: OnboardingUserRole.professional,
+    });
+    prisma.user.findFirst.mockResolvedValue({
       id: PATIENT_ID,
       email: 'pat@example.com',
       profile: {
@@ -153,17 +215,15 @@ describe('ProfessionalService', () => {
     });
   });
 
-  it('getPatient rejects calling on a non-personal user', async () => {
+  it('getPatient returns 404 for an unrelated user (whether doctor or patient)', async () => {
     const prisma = makePrisma();
     prisma.userProfile.findUnique.mockResolvedValue({
       role: OnboardingUserRole.professional,
     });
-    prisma.user.findUnique.mockResolvedValue({
-      id: 'other-doctor',
-      email: 'other@doctor.com',
-      createdAt: new Date(),
-      profile: { role: OnboardingUserRole.professional },
-    });
+    // The relationship-gated findFirst returns null both when the target
+    // doesn't exist, isn't a patient, or isn't booked with us — collapsing
+    // these into a single 404 prevents id enumeration.
+    prisma.user.findFirst.mockResolvedValue(null);
     const svc = await buildService(prisma);
     await expect(
       svc.getPatient(DOCTOR_ID, 'other-doctor'),

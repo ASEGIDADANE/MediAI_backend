@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -9,6 +10,12 @@ import {
   type UserProfile,
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  ACTIVE_DOCTOR_PATIENT_RELATIONSHIP_STATUSES,
+  bookingChatWindowEndsAt,
+  CHAT_ALLOWED_STATUSES,
+  isBookingChatActive,
+} from '../consultations/booking-statuses';
 import {
   takeSkipFromListPatients,
   type ListPatientsQueryDto,
@@ -36,6 +43,32 @@ const PATIENT_INCLUDE = {
   createdAt: true,
   profile: true,
 } as const;
+
+/**
+ * Single source of truth for "what counts as a current doctor↔patient
+ * relationship" lives in `consultations/booking-statuses.ts`. Re-exported
+ * locally so existing call sites don't have to be touched.
+ */
+const ACTIVE_BOOKING_STATUSES = ACTIVE_DOCTOR_PATIENT_RELATIONSHIP_STATUSES;
+
+/**
+ * Prisma `User` where-clause that restricts the result to patients with at
+ * least one `ConsultationBooking` in `ACTIVE_BOOKING_STATUSES` against the
+ * given doctor. Used to AND into the `listPatients` query *and* (via
+ * {@link ProfessionalService.requireRelatedPatient}) to gate every
+ * per-patient endpoint, so a doctor can never read or mutate data for a
+ * patient they have no working relationship with.
+ */
+function activeBookingFilterFor(doctorUserId: string): Prisma.UserWhereInput {
+  return {
+    consultationBookings: {
+      some: {
+        topDoctorId: doctorUserId,
+        status: { in: ACTIVE_BOOKING_STATUSES },
+      },
+    },
+  };
+}
 
 @Injectable()
 export class ProfessionalService {
@@ -72,10 +105,17 @@ export class ProfessionalService {
     );
     const q = dto.q?.trim();
 
-    // Caller is excluded so a doctor can never message themselves.
+    // The doctor only sees personal users (a) who are not themselves and
+    // (b) who have an active ConsultationBooking with the doctor. The latter
+    // is the privacy gate: before this rule shipped a verified doctor could
+    // see every patient in the system, which violates the relationship-based
+    // access model described in the product spec.
     const baseWhere: Prisma.UserWhereInput = {
-      id: { not: callerUserId },
-      profile: { is: { role: OnboardingUserRole.personal } },
+      AND: [
+        { id: { not: callerUserId } },
+        { profile: { is: { role: OnboardingUserRole.personal } } },
+        activeBookingFilterFor(callerUserId),
+      ],
     };
     const where: Prisma.UserWhereInput =
       q && q.length > 0
@@ -149,19 +189,24 @@ export class ProfessionalService {
   ): Promise<PatientDetailDto> {
     await this.assertCallerIsProfessional(callerUserId);
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: patientId },
+    // Single query that also enforces the relationship gate. A doctor probing
+    // for an arbitrary patient ID gets the same 404 they would for a missing
+    // record — we never leak "this patient exists, you just can't see them".
+    const user = await this.prisma.user.findFirst({
+      where: {
+        AND: [
+          { id: patientId },
+          { id: { not: callerUserId } },
+          { profile: { is: { role: OnboardingUserRole.personal } } },
+          activeBookingFilterFor(callerUserId),
+        ],
+      },
       select: {
         id: true,
         ...PATIENT_INCLUDE,
       },
     });
-    if (
-      !user ||
-      !user.profile ||
-      user.profile.role !== OnboardingUserRole.personal ||
-      user.id === callerUserId
-    ) {
+    if (!user || !user.profile) {
       throw new NotFoundException('Patient not found.');
     }
 
@@ -247,11 +292,17 @@ export class ProfessionalService {
       .reverse()
       .map((m) => this.toMessageDto(m, callerUserId));
 
+    const chatWindowEndsAt = await this.resolveChatWindowEndsAt(
+      callerUserId,
+      patientId,
+    );
+
     return {
       threadId: thread.id,
       patientId,
       patientName: patient.profile?.preferredName ?? '',
       messages,
+      chatWindowEndsAt,
     };
   }
 
@@ -265,8 +316,16 @@ export class ProfessionalService {
 
     const trimmed = body.trim();
     if (trimmed.length === 0) {
-      throw new NotFoundException('Message body cannot be empty.');
+      // 400 — `BadRequestException` is the right code for empty bodies; the
+      // pre-Phase-4 implementation used `NotFoundException` by mistake.
+      throw new BadRequestException('Message body cannot be empty.');
     }
+
+    // Phase 4 — chat-window gate. Doctor can only send while at least one
+    // booking with this patient is inside its consultation window
+    // (approved/completed/legacy-confirmed AND time-bounded). Outside the
+    // window the doctor must wait for the patient to book a follow-up.
+    await this.assertChatWindowOpen(callerUserId, patientId);
 
     const thread = await this.findOrCreateThread(callerUserId, patientId);
 
@@ -287,23 +346,108 @@ export class ProfessionalService {
     return this.toMessageDto(msg, callerUserId);
   }
 
+  /**
+   * Mirror of `MessagesService.assertChatWindowOpen` — see the comment
+   * there for the rationale. Kept private to this service so each side
+   * owns its own pre-flight check.
+   */
+  private async assertChatWindowOpen(
+    doctorUserId: string,
+    patientUserId: string,
+  ): Promise<void> {
+    const candidates = await this.prisma.consultationBooking.findMany({
+      where: {
+        patientUserId,
+        topDoctorId: doctorUserId,
+        status: { in: CHAT_ALLOWED_STATUSES },
+      },
+      orderBy: [{ updatedAt: 'desc' }],
+      take: 5,
+      select: {
+        id: true,
+        status: true,
+        scheduledFor: true,
+        durationMinutes: true,
+        completedAt: true,
+        createdAt: true,
+      },
+    });
+    const now = new Date();
+    if (candidates.some((b) => isBookingChatActive(b, now))) return;
+    if (candidates.length > 0) {
+      throw new ForbiddenException(
+        'This consultation has ended. The patient must book a follow-up before you can keep messaging.',
+      );
+    }
+    throw new ForbiddenException(
+      'Chat is locked — you have no active consultation with this patient.',
+    );
+  }
+
+  /**
+   * Returns the ISO timestamp at which chat will next close for this
+   * doctor↔patient pair, or `null` when no booking is currently active.
+   * Used by `listMessages` to feed the doctor's chat composer lock UI.
+   */
+  async resolveChatWindowEndsAt(
+    doctorUserId: string,
+    patientUserId: string,
+  ): Promise<string | null> {
+    const candidates = await this.prisma.consultationBooking.findMany({
+      where: {
+        patientUserId,
+        topDoctorId: doctorUserId,
+        status: { in: CHAT_ALLOWED_STATUSES },
+      },
+      orderBy: [{ updatedAt: 'desc' }],
+      take: 5,
+      select: {
+        id: true,
+        status: true,
+        scheduledFor: true,
+        durationMinutes: true,
+        completedAt: true,
+        createdAt: true,
+      },
+    });
+    const now = new Date();
+    let latest: Date | null = null;
+    for (const b of candidates) {
+      if (!isBookingChatActive(b, now)) continue;
+      const endsAt = bookingChatWindowEndsAt(b);
+      if (endsAt && (!latest || endsAt.getTime() > latest.getTime())) {
+        latest = endsAt;
+      }
+    }
+    return latest?.toISOString() ?? null;
+  }
+
   // --- helpers ---
 
+  /**
+   * Loads a patient *only if* the calling doctor has an active booking with
+   * them. Used by every per-patient endpoint that mutates state (profile
+   * patch, medical-history put, messaging). The 404 is intentional even when
+   * the patient exists but is unrelated — exposing existence would let an
+   * attacker enumerate the user table.
+   */
   private async requirePatient(callerUserId: string, patientId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: patientId },
+    const user = await this.prisma.user.findFirst({
+      where: {
+        AND: [
+          { id: patientId },
+          { id: { not: callerUserId } },
+          { profile: { is: { role: OnboardingUserRole.personal } } },
+          activeBookingFilterFor(callerUserId),
+        ],
+      },
       select: {
         id: true,
         email: true,
         profile: { select: { role: true, preferredName: true } },
       },
     });
-    if (
-      !user ||
-      !user.profile ||
-      user.profile.role !== OnboardingUserRole.personal ||
-      user.id === callerUserId
-    ) {
+    if (!user || !user.profile) {
       throw new NotFoundException('Patient not found.');
     }
     return user;

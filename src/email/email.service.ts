@@ -3,9 +3,21 @@ import { ConfigService } from '@nestjs/config';
 import { request as httpsRequest } from 'https';
 import * as nodemailer from 'nodemailer';
 
-const SUBJECT = 'Reset your MediAI password';
+const PASSWORD_RESET_SUBJECT = 'Reset your MediAI password';
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 const RESEND_TIMEOUT_MS = 15_000;
+
+/**
+ * Phase 6 — generic transactional payload used by notification emails. Same
+ * Resend / SMTP plumbing as password reset (`sendPasswordResetLink`); the
+ * password-reset method is a thin wrapper that prefills the subject + body.
+ */
+export type TransactionalEmail = {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+};
 
 type EmailProvider = 'resend' | 'smtp';
 
@@ -95,50 +107,77 @@ export class EmailService {
 
   async sendPasswordResetLink(to: string, resetUrl: string): Promise<void> {
     const { text, html } = this.buildBodies(resetUrl);
+    await this.sendTransactional(
+      { to, subject: PASSWORD_RESET_SUBJECT, text, html },
+      () => this.logDevOnly(resetUrl, to),
+    );
+  }
 
+  /**
+   * Phase 6 — generic transactional sender used by the notifications layer.
+   * Same dev-vs-prod gating as password reset:
+   *   * In dev (`SEND_REAL_EMAIL_IN_DEV !== 'true'`) we only log a short
+   *     summary so devs aren't accidentally spamming patients during
+   *     local testing.
+   *   * In prod (or when explicitly enabled in dev) we route through the
+   *     configured provider (Resend by default, SMTP if `EMAIL_PROVIDER=smtp`).
+   *   * Any send failure is logged but swallowed — transactional email is
+   *     best-effort; never block the in-app notification or the underlying
+   *     booking-lifecycle write on it.
+   *
+   * `devLog` is an optional callback used for richer dev-only logging
+   * (e.g. password-reset prints the actual URL). Most callers can skip it
+   * and rely on the generic subject-line summary.
+   */
+  async sendTransactional(
+    email: TransactionalEmail,
+    devLog?: () => void,
+  ): Promise<void> {
     if (!this.shouldUseProvider()) {
-      this.logDevOnly(resetUrl, to);
+      if (devLog) {
+        devLog();
+      } else {
+        this.logger.log(
+          `[dev] Suppressed email to ${email.to} (subject="${email.subject}")`,
+        );
+      }
       return;
     }
 
     const from = this.getFrom();
     if (!from) {
       this.logger.error(
-        'EMAIL_FROM is not set; cannot send password reset email. Link not sent. Set EMAIL_FROM in production.',
+        `EMAIL_FROM is not set; cannot send "${email.subject}" to ${email.to}. Set EMAIL_FROM in production.`,
       );
-      if (!this.isProduction()) {
-        this.logDevOnly(resetUrl, to);
+      if (!this.isProduction() && devLog) {
+        devLog();
       }
       return;
     }
 
-    const provider = this.getProvider();
-
     try {
-      if (provider === 'resend') {
-        await this.sendWithResend(to, from, text, html, resetUrl);
+      if (this.getProvider() === 'resend') {
+        await this.sendWithResend(email, from, devLog);
         return;
       }
-      await this.sendWithSmtp(to, from, text, html, resetUrl);
+      await this.sendWithSmtp(email, from, devLog);
     } catch (e) {
-      this.logSendFailure(e, to);
+      this.logSendFailure(e, email.to);
     }
   }
 
   private async sendWithResend(
-    to: string,
+    email: TransactionalEmail,
     from: string,
-    text: string,
-    html: string,
-    resetUrl: string,
+    devLog: (() => void) | undefined,
   ): Promise<void> {
     const key = this.config.get<string>('RESEND_API_KEY', '')?.trim();
     if (!key) {
       this.logger.error(
         'RESEND_API_KEY is not set; cannot send via Resend. Set RESEND_API_KEY in production.',
       );
-      if (!this.isProduction()) {
-        this.logDevOnly(resetUrl, to);
+      if (!this.isProduction() && devLog) {
+        devLog();
       }
       return;
     }
@@ -146,17 +185,17 @@ export class EmailService {
     try {
       const result = await this.callResendApi(key, {
         from,
-        to: [to],
-        subject: SUBJECT,
-        text,
-        html,
+        to: [email.to],
+        subject: email.subject,
+        text: email.text,
+        html: email.html,
       });
       this.logger.log(
-        `Password reset email sent via Resend to ${to} (id=${result.id})`,
+        `Email sent via Resend to ${email.to} (subject="${email.subject}", id=${result.id})`,
       );
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      this.logger.error(`Resend error: ${message} (to=${to})`);
+      this.logger.error(`Resend error: ${message} (to=${email.to})`);
     }
   }
 
@@ -240,11 +279,9 @@ export class EmailService {
   }
 
   private async sendWithSmtp(
-    to: string,
+    email: TransactionalEmail,
     from: string,
-    text: string,
-    html: string,
-    resetUrl: string,
+    devLog: (() => void) | undefined,
   ): Promise<void> {
     const host = this.config.get<string>('SMTP_HOST', '')?.trim();
     const user = this.config.get<string>('SMTP_USER', '')?.trim();
@@ -254,15 +291,15 @@ export class EmailService {
 
     if (!host) {
       this.logger.error('SMTP_HOST is not set; cannot send via SMTP.');
-      if (!this.isProduction()) {
-        this.logDevOnly(resetUrl, to);
+      if (!this.isProduction() && devLog) {
+        devLog();
       }
       return;
     }
     if (!user || !pass) {
       this.logger.error('SMTP_USER / SMTP_PASS must be set for SMTP delivery.');
-      if (!this.isProduction()) {
-        this.logDevOnly(resetUrl, to);
+      if (!this.isProduction() && devLog) {
+        devLog();
       }
       return;
     }
@@ -275,13 +312,13 @@ export class EmailService {
     });
     const info = await transporter.sendMail({
       from,
-      to,
-      subject: SUBJECT,
-      text,
-      html,
+      to: email.to,
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
     });
     this.logger.log(
-      `Password reset email sent via SMTP to ${to} (messageId=${info.messageId})`,
+      `Email sent via SMTP to ${email.to} (subject="${email.subject}", messageId=${info.messageId})`,
     );
   }
 }

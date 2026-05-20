@@ -30,6 +30,8 @@ function baseUserProfile(over: Partial<UserProfile> = {}): UserProfile {
     verificationReviewedAt: null,
     verificationReviewedBy: null,
     verificationNotes: null,
+    medicalSpecialty: null,
+    primaryConditions: [],
     onboardingCompletedAt: new Date('2020-01-01'),
     createdAt: new Date('2020-01-01'),
     updatedAt: new Date('2020-01-01'),

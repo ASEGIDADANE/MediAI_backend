@@ -1,11 +1,18 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayMaxSize,
+  IsArray,
+  IsEnum,
   IsIn,
   IsObject,
   IsOptional,
   IsString,
   MaxLength,
 } from 'class-validator';
+import {
+  ConditionCategory,
+  MedicalSpecialty,
+} from '../../generated/prisma/client';
 import { ETHIOPIAN_REGIONS_LIST } from '../../onboarding/onboarding.constants';
 
 const FEATURES = ['ai-doctor', 'top-doctors', 'lab-test-interpretation'] as const;
@@ -79,4 +86,36 @@ export class PatchMeProfileDto {
   @IsOptional()
   @IsObject()
   professionalProfile?: Record<string, unknown>;
+
+  /**
+   * Phase 5 — patient's primary health concerns (multi-select). Replaces the
+   * full array on PATCH; pass `[]` to clear. Server-side max-cap mirrors the
+   * frontend picker UI so abusive payloads can't blow up the response.
+   */
+  @ApiPropertyOptional({
+    enum: ConditionCategory,
+    isArray: true,
+    description:
+      'Phase 5 — patient-facing concerns. Server uses these to expand into specialties when filtering /top-doctors. Empty array means "no preferences"; the field is meaningless for professional users.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(12)
+  @IsEnum(ConditionCategory, { each: true })
+  primaryConditions?: ConditionCategory[];
+
+  /**
+   * Phase 5 — canonical specialty (doctor only). The doctor may keep
+   * setting the free-text `professionalProfile.specialty` for display; if
+   * this enum is sent the service writes the dedicated column used by the
+   * matching SQL filter.
+   */
+  @ApiPropertyOptional({
+    enum: MedicalSpecialty,
+    description:
+      'Phase 5 — canonical specialty for matching. Only honored when the caller is a professional.',
+  })
+  @IsOptional()
+  @IsEnum(MedicalSpecialty)
+  medicalSpecialty?: MedicalSpecialty;
 }

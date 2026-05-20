@@ -23,6 +23,7 @@ import {
 } from '../auth/decorators/current-user.decorator';
 import { ConsultationsService } from './consultations.service';
 import {
+  CancelConsultationBookingDto,
   ConsultationBookingListResponseDto,
   ConsultationBookingResponseDto,
   CreateConsultationBookingDto,
@@ -64,7 +65,8 @@ export class ConsultationsController {
   @Get(':id')
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @ApiOperation({
-    summary: 'Fetch one consultation booking owned by the patient or visible to admins',
+    summary:
+      'Fetch one consultation booking owned by the patient or visible to admins',
   })
   @ApiResponse({ status: 200, type: ConsultationBookingResponseDto })
   getOne(
@@ -72,5 +74,27 @@ export class ConsultationsController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<ConsultationBookingResponseDto> {
     return this.consultations.getBookingById(user.id, user.appRole, id);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Patient-side cancel of a still-open booking',
+    description:
+      'Allowed while status ∈ {pending_payment, paid, pending_doctor_approval, approved (legacy: paid/confirmed)}. Sets `cancelled_at`, stamps `cancelled_by_user_id`, and moves a paid booking to `refund_status=pending` so the finance pipeline knows to issue a refund.',
+  })
+  @ApiResponse({ status: 200, type: ConsultationBookingResponseDto })
+  @ApiResponse({ status: 404, description: 'Booking not found or not yours' })
+  @ApiResponse({
+    status: 409,
+    description: 'Booking is already in a terminal state',
+  })
+  cancel(
+    @CurrentUser() user: RequestUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: CancelConsultationBookingDto,
+  ): Promise<ConsultationBookingResponseDto> {
+    return this.consultations.cancelMyBooking(user.id, id, body);
   }
 }

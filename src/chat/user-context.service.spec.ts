@@ -35,6 +35,8 @@ function sampleProfile(over: Partial<UserProfile> = {}): UserProfile {
     verificationReviewedAt: null,
     verificationReviewedBy: null,
     verificationNotes: null,
+    medicalSpecialty: null,
+    primaryConditions: [],
     onboardingCompletedAt: new Date(),
     createdAt: new Date(),
     updatedAt: new Date(),
