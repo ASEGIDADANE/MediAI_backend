@@ -72,10 +72,14 @@ function chunkText(s: string): string[] {
 }
 
 function audienceForFile(name: string): DocumentAudience {
-  if (name.includes('personal') || name.includes('03-')) {
+  const lower = name.toLowerCase();
+  if (lower.includes('general-only')) {
+    return DocumentAudience.general_only;
+  }
+  if (lower.includes('personal') || lower.includes('03-')) {
     return DocumentAudience.personal_guidance;
   }
-  if (name.includes('01-') || name.includes('general-safety')) {
+  if (lower.includes('01-') || lower.includes('general-safety')) {
     return DocumentAudience.all;
   }
   return DocumentAudience.all;

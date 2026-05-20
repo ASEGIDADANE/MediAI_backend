@@ -54,4 +54,24 @@ describe('UserContextService', () => {
     expect(t).toContain('chronicDiseases');
     expect(t.length).toBeLessThanOrEqual(4500);
   });
+
+  it('includes family and surgical history when present', () => {
+    const svc = new UserContextService({
+      get: (k: string, d?: string) => d ?? '4000',
+    } as unknown as ConfigService);
+    const t = svc.buildFromUserProfile(
+      sampleProfile({
+        medicalHistory: {
+          chronicDiseases: ['hypertension'],
+          familyHistory: ['Diabetes'],
+          familyHistoryDetails: 'Father diagnosed in his 50s.',
+          surgicalHistory: 'Appendectomy 2010.',
+          currentMedications: 'amlodipine',
+        },
+      }),
+    );
+    expect(t).toContain('familyHistory');
+    expect(t).toContain('surgicalHistory');
+    expect(t).toContain('Appendectomy');
+  });
 });

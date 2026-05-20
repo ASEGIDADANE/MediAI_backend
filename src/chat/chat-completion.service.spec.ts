@@ -7,6 +7,11 @@ import { ChatQuotaService } from './chat-quota.service';
 import { LlmService } from './llm.service';
 import { RagService } from './rag.service';
 import { UserContextService } from './user-context.service';
+import { PersonalChatAccessService } from '../payments/personal-chat-access.service';
+
+const personalChatAccessMock = {
+  recordTrialUsageIfNeeded: jest.fn().mockResolvedValue(undefined),
+};
 
 const quotaMock = {
   ensureCanSend: jest.fn(),
@@ -65,6 +70,10 @@ describe('ChatCompletionService — general', () => {
           useValue: { get: (_k: string, d?: string) => d },
         },
         { provide: ChatQuotaService, useValue: quotaMock },
+        {
+          provide: PersonalChatAccessService,
+          useValue: personalChatAccessMock,
+        },
       ],
     }).compile();
 
@@ -102,6 +111,10 @@ describe('ChatCompletionService — clinical assistant (patientUserId)', () => {
           useValue: { get: (_k: string, d?: string) => d },
         },
         { provide: ChatQuotaService, useValue: quotaMock },
+        {
+          provide: PersonalChatAccessService,
+          useValue: personalChatAccessMock,
+        },
       ],
     })
       .compile()

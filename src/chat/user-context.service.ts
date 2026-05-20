@@ -73,6 +73,9 @@ export class UserContextService {
     };
     add('chronicDiseases', o.chronicDiseases);
     add('chronicDetails', o.chronicDetails);
+    add('familyHistory', o.familyHistory);
+    add('familyHistoryDetails', o.familyHistoryDetails);
+    add('surgicalHistory', o.surgicalHistory);
     add('allergies', o.allergies);
     add('allergyDetails', o.allergyDetails);
     add('currentMedications', o.currentMedications);

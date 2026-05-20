@@ -27,6 +27,7 @@ import { LlmService, type LlmMessage } from './llm.service';
 import { RagService, type Citation } from './rag.service';
 import { UserContextService } from './user-context.service';
 import { ChatQuotaService } from './chat-quota.service';
+import { PersonalChatAccessService } from '../payments/personal-chat-access.service';
 
 @Injectable()
 export class ChatCompletionService {
@@ -41,6 +42,7 @@ export class ChatCompletionService {
     private readonly llm: LlmService,
     private readonly config: ConfigService,
     private readonly quota: ChatQuotaService,
+    private readonly personalChatAccess: PersonalChatAccessService,
   ) {
     this.maxHistoryContextChars = Number(
       this.config.get('CHAT_MAX_HISTORY_CHARS', '24000') || 24_000,
@@ -157,6 +159,9 @@ export class ChatCompletionService {
       });
 
       this.quota.recordCompletedTurn(userId, 'personal');
+      if (subject.kind === 'self') {
+        await this.personalChatAccess.recordTrialUsageIfNeeded(userId);
+      }
       this.logChatEvent({
         requestId,
         mode: 'personal',

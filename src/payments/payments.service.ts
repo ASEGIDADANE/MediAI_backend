@@ -30,7 +30,7 @@ import {
 } from './dto/payments.dto';
 import { ChapaClient, type ChapaVerifyResult } from './chapa.client';
 import { formatPaymentPrice } from './payment-format.util';
-import { NotificationsService } from '../notifications/notifications.service';
+import { PersonalChatAccessService } from './personal-chat-access.service';
 
 @Injectable()
 export class PaymentsService {
@@ -40,7 +40,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly chapa: ChapaClient,
     private readonly config: ConfigService,
-    private readonly notifications: NotificationsService,
+    private readonly personalChatAccess: PersonalChatAccessService,
   ) {}
 
   async listAssistantPlans(): Promise<AssistantAccessPlanListResponseDto> {
@@ -90,6 +90,7 @@ export class PaymentsService {
     ]);
 
     const assistant = active ?? latest;
+    const access = await this.personalChatAccess.getAccessState(userId);
     return {
       assistantAccess: {
         active: Boolean(
@@ -107,6 +108,9 @@ export class PaymentsService {
         endsAt: assistant?.endsAt?.toISOString() ?? null,
         paidAt: assistant?.paidAt?.toISOString() ?? null,
       },
+      personalTrial: access.trial,
+      personalChatAllowed: access.personalChatAllowed,
+      personalChatReadOnly: access.personalChatReadOnly,
       recentConsultations: consultations.map((row) =>
         this.toConsultationSummary(row),
       ),
@@ -159,7 +163,7 @@ export class PaymentsService {
         email: user.email,
         txRef,
         callbackUrl: this.getCallbackUrl(),
-        returnUrl: this.getReturnUrl('assistant'),
+        returnUrl: this.getReturnUrl('assistant', txRef),
         title: 'MediAI Assistant',
         // Same Chapa-allowed character set as above — avoid colons and
         // parentheses so the hosted receipt isn't rejected at initialize.
@@ -230,7 +234,7 @@ export class PaymentsService {
         email: booking.patient.email,
         txRef,
         callbackUrl: this.getCallbackUrl(),
-        returnUrl: this.getReturnUrl('consultation', booking.id),
+        returnUrl: this.getReturnUrl('consultation', txRef, booking.id),
         title: 'MediAI Consult',
         description: `${booking.consultationType} consultation with ${doctorName}`,
         meta: {
@@ -1071,24 +1075,20 @@ export class PaymentsService {
   }
 
   private getReturnUrl(
-    kind: 'assistant' | 'consultation' | 'subscription',
-    id?: string,
+    kind: 'assistant' | 'consultation',
+    txRef: string,
+    bookingId?: string,
   ) {
     const base =
       this.config.get<string>('CHAPA_RETURN_URL') ??
       `${this.config.get<string>('FRONTEND_URL') ?? 'http://localhost:3000'}/payment/chapa/return`;
     const url = new URL(base);
     url.searchParams.set('kind', kind);
-    // `bookingId` for consultations, `subscriptionId` for subscriptions.
-    // Both serve the same purpose: an "owned-by-this-user" id the return
-    // page can post to the auth'd finalize route when Chapa drops the
-    // tx_ref on the redirect (sandbox does this routinely).
-    if (id) {
-      if (kind === 'subscription') {
-        url.searchParams.set('subscriptionId', id);
-      } else if (kind === 'consultation') {
-        url.searchParams.set('bookingId', id);
-      }
+    // Chapa often redirects without appending trx_ref (common in sandbox). Embed
+    // our reference so the return page can call /payments/chapa/callback.
+    url.searchParams.set('tx_ref', txRef);
+    if (bookingId) {
+      url.searchParams.set('bookingId', bookingId);
     }
     return url.toString();
   }

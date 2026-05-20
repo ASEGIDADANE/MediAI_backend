@@ -174,6 +174,23 @@ export class MeSubscriptionResponseDto {
   paidAt: string | null;
 }
 
+export class BillingPersonalTrialDto {
+  @ApiProperty()
+  enabled: boolean;
+
+  @ApiProperty()
+  limit: number;
+
+  @ApiProperty()
+  used: number;
+
+  @ApiProperty()
+  remaining: number;
+
+  @ApiProperty()
+  exhausted: boolean;
+}
+
 export class BillingAssistantAccessDto {
   @ApiProperty()
   active: boolean;
@@ -256,6 +273,21 @@ export class BillingConsultationSummaryDto {
 export class MeBillingResponseDto {
   @ApiProperty({ type: BillingAssistantAccessDto })
   assistantAccess: BillingAssistantAccessDto;
+
+  @ApiProperty({ type: BillingPersonalTrialDto })
+  personalTrial: BillingPersonalTrialDto;
+
+  @ApiProperty({
+    description:
+      'True when the user may open personal chat and send messages (paid or trial remaining).',
+  })
+  personalChatAllowed: boolean;
+
+  @ApiProperty({
+    description:
+      'True when trial is exhausted and no paid pass — history is read-only.',
+  })
+  personalChatReadOnly: boolean;
 
   @ApiProperty({ type: [BillingConsultationSummaryDto] })
   recentConsultations: BillingConsultationSummaryDto[];

@@ -415,6 +415,10 @@ model UserProfile {
   /// Admin's note – mainly used to explain rejections.
   verificationNotes       String?   @map("verification_notes") @db.VarChar(2000)
 
+  /// Completed personalized assistant turns consumed from the lifetime free trial.
+  personalTrialMessagesUsed Int       @default(0) @map("personal_trial_messages_used")
+  personalTrialExhaustedAt  DateTime? @map("personal_trial_exhausted_at")
+
   onboardingCompletedAt DateTime @default(now())
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt

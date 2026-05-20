@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaService } from './prisma/prisma.service';
+import { PrismaService } from './prisma/prisma.service';
 
 describe('AppController', () => {
   let appController: AppController;
@@ -12,10 +13,10 @@ describe('AppController', () => {
       providers: [
         AppService,
         {
-          // The smoke `/` route doesn't touch the DB; `/health/database` does.
-          // Stub Prisma with a no-op `$queryRaw` so the constructor resolves.
           provide: PrismaService,
-          useValue: { $queryRaw: jest.fn().mockResolvedValue([{ '?column?': 1 }]) },
+          useValue: {
+            $queryRaw: jest.fn().mockResolvedValue([{ '?column?': 1 }]),
+          },
         },
       ],
     }).compile();

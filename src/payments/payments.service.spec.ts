@@ -7,32 +7,54 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ChapaClient } from './chapa.client';
+import { PersonalChatAccessService } from './personal-chat-access.service';
 import { PaymentsService } from './payments.service';
 
 describe('PaymentsService', () => {
   let svc: PaymentsService;
+  let personalChatAccess: {
+    getAccessState: jest.Mock;
+    assertCanSendPersonalMessage: jest.Mock;
+  };
   let prisma: {
     userProfile: { findUnique: jest.Mock };
     userAssistantAccess: { updateMany: jest.Mock; findFirst: jest.Mock };
-    userSubscription: { updateMany: jest.Mock; findFirst: jest.Mock };
     $transaction: jest.Mock;
+    consultationBooking: { findMany: jest.Mock };
   };
 
   beforeEach(async () => {
+    personalChatAccess = {
+      getAccessState: jest.fn().mockResolvedValue({
+        paidActive: false,
+        trial: {
+          enabled: true,
+          limit: 3,
+          used: 0,
+          remaining: 3,
+          exhausted: false,
+        },
+        personalChatAllowed: true,
+        personalChatReadOnly: false,
+      }),
+      assertCanSendPersonalMessage: jest.fn().mockResolvedValue(undefined),
+    };
     prisma = {
       userProfile: { findUnique: jest.fn() },
       userAssistantAccess: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         findFirst: jest.fn(),
       },
-      userSubscription: {
-        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
-        findFirst: jest.fn(),
-      },
-      // requireActiveSubscription batches the two findFirst calls inside a
-      // `$transaction([...])`. We unbatch them by resolving each call sequentially.
-      $transaction: jest.fn((calls: Promise<unknown>[]) => Promise.all(calls)),
+      $transaction: jest.fn(),
+      consultationBooking: { findMany: jest.fn().mockResolvedValue([]) },
     };
+    prisma.$transaction.mockImplementation(async (ops: unknown[]) => {
+      const results = [];
+      for (const op of ops) {
+        results.push(await op);
+      }
+      return results;
+    });
     const mod = await Test.createTestingModule({
       providers: [
         PaymentsService,
@@ -45,13 +67,7 @@ describe('PaymentsService', () => {
             getOrThrow: jest.fn(() => 'CHASECK_TEST'),
           },
         },
-        // Phase 6 — booking-paid notifications fire from
-        // `finalizeByVerifiedTransaction`. None of the assertions in this
-        // file go through that code path, so a no-op stub is enough.
-        {
-          provide: NotificationsService,
-          useValue: { enqueue: jest.fn(async () => undefined) },
-        },
+        { provide: PersonalChatAccessService, useValue: personalChatAccess },
       ],
     }).compile();
     svc = mod.get(PaymentsService);

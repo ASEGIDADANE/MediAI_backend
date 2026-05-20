@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { getChatConfigSnapshot } from '../config/chat.snapshot';
+import { PersonalChatAccessService } from '../payments/personal-chat-access.service';
 import {
   chatReplyAuthor,
   getReplyForMode,
@@ -13,13 +15,16 @@ export class ChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rag: RagService,
+    private readonly personalChatAccess: PersonalChatAccessService,
   ) {}
 
   getConfig() {
+    const { enabled, limit } = this.personalChatAccess.getTrialConfig();
     return {
       ...getChatConfigSnapshot(),
       /** True when `RAG_ENABLED=true` and the API may attach guideline citations to chat */
       ragEnabled: this.rag.isEnabled(),
+      assistantTrial: { enabled, limit },
     };
   }
 

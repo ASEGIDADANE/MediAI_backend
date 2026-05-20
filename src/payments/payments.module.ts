@@ -5,6 +5,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ChapaClient } from './chapa.client';
 import { MeBillingController, PaymentsController } from './payments.controller';
+import { PersonalChatAccessService } from './personal-chat-access.service';
 import { PaymentsService } from './payments.service';
 import { PaymentsWebhookController } from './payments-webhook.controller';
 
@@ -15,7 +16,7 @@ import { PaymentsWebhookController } from './payments-webhook.controller';
     PaymentsWebhookController,
     MeBillingController,
   ],
-  providers: [PaymentsService, ChapaClient],
-  exports: [PaymentsService],
+  providers: [PaymentsService, PersonalChatAccessService, ChapaClient],
+  exports: [PaymentsService, PersonalChatAccessService],
 })
 export class PaymentsModule {}
