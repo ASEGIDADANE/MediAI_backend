@@ -31,6 +31,7 @@ import {
 import { ChapaClient, type ChapaVerifyResult } from './chapa.client';
 import { formatPaymentPrice } from './payment-format.util';
 import { PersonalChatAccessService } from './personal-chat-access.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class PaymentsService {
@@ -41,6 +42,7 @@ export class PaymentsService {
     private readonly chapa: ChapaClient,
     private readonly config: ConfigService,
     private readonly personalChatAccess: PersonalChatAccessService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async listAssistantPlans(): Promise<AssistantAccessPlanListResponseDto> {
@@ -234,7 +236,9 @@ export class PaymentsService {
         email: booking.patient.email,
         txRef,
         callbackUrl: this.getCallbackUrl(),
-        returnUrl: this.getReturnUrl('consultation', txRef, booking.id),
+        returnUrl: this.getReturnUrl('consultation', txRef, {
+          bookingId: booking.id,
+        }),
         title: 'MediAI Consult',
         description: `${booking.consultationType} consultation with ${doctorName}`,
         meta: {
@@ -442,7 +446,9 @@ export class PaymentsService {
         // `tx_ref` on the way back, but the patient still lands on our
         // page with this id and can hit the authenticated finalize
         // endpoint, which re-verifies the stored `txRef` against Chapa.
-        returnUrl: this.getReturnUrl('subscription', sub.id),
+        returnUrl: this.getReturnUrl('subscription', txRef, {
+          subscriptionId: sub.id,
+        }),
         title: 'MediAI Plan',
         // Chapa's customization fields only accept letters, numbers,
         // spaces, dots, hyphens, and underscores — no parentheses or
@@ -1075,9 +1081,9 @@ export class PaymentsService {
   }
 
   private getReturnUrl(
-    kind: 'assistant' | 'consultation',
+    kind: 'assistant' | 'consultation' | 'subscription',
     txRef: string,
-    bookingId?: string,
+    options?: { bookingId?: string; subscriptionId?: string },
   ) {
     const base =
       this.config.get<string>('CHAPA_RETURN_URL') ??
@@ -1087,8 +1093,11 @@ export class PaymentsService {
     // Chapa often redirects without appending trx_ref (common in sandbox). Embed
     // our reference so the return page can call /payments/chapa/callback.
     url.searchParams.set('tx_ref', txRef);
-    if (bookingId) {
-      url.searchParams.set('bookingId', bookingId);
+    if (options?.bookingId) {
+      url.searchParams.set('bookingId', options.bookingId);
+    }
+    if (options?.subscriptionId) {
+      url.searchParams.set('subscriptionId', options.subscriptionId);
     }
     return url.toString();
   }

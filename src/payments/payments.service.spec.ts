@@ -19,6 +19,7 @@ describe('PaymentsService', () => {
   let prisma: {
     userProfile: { findUnique: jest.Mock };
     userAssistantAccess: { updateMany: jest.Mock; findFirst: jest.Mock };
+    userSubscription: { updateMany: jest.Mock; findFirst: jest.Mock };
     $transaction: jest.Mock;
     consultationBooking: { findMany: jest.Mock };
   };
@@ -45,11 +46,15 @@ describe('PaymentsService', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         findFirst: jest.fn(),
       },
+      userSubscription: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findFirst: jest.fn(),
+      },
       $transaction: jest.fn(),
       consultationBooking: { findMany: jest.fn().mockResolvedValue([]) },
     };
     prisma.$transaction.mockImplementation(async (ops: unknown[]) => {
-      const results = [];
+      const results: unknown[] = [];
       for (const op of ops) {
         results.push(await op);
       }
@@ -68,6 +73,10 @@ describe('PaymentsService', () => {
           },
         },
         { provide: PersonalChatAccessService, useValue: personalChatAccess },
+        {
+          provide: NotificationsService,
+          useValue: { enqueue: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
     svc = mod.get(PaymentsService);
