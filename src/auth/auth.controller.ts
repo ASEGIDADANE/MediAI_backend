@@ -25,10 +25,14 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { RefreshTokenDto, LogoutDto } from './dto/refresh-token.dto';
 import { AuthTokensDto } from './dto/auth-tokens.dto';
 import { MessageResponseDto } from './dto/message-response.dto';
 import { UserPublicDto } from './dto/user-public.dto';
-import { CurrentUser, type RequestUser } from './decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type RequestUser,
+} from './decorators/current-user.decorator';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -58,6 +62,41 @@ export class AuthController {
     return this.auth.login(dto);
   }
 
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Rotate refresh token',
+    description:
+      'Exchange a valid refresh token for a new access token + rotated refresh token. ' +
+      'The old refresh token is immediately invalidated.',
+  })
+  @ApiBody({ type: RefreshTokenDto })
+  @ApiResponse({ status: 200, description: 'New token pair issued', type: AuthTokensDto })
+  @ApiResponse({ status: 401, description: 'Invalid, expired, or already-used refresh token' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
+  async refresh(@Body() dto: RefreshTokenDto): Promise<AuthTokensDto> {
+    return this.auth.rotateRefreshToken(dto.refreshToken);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Revoke refresh token (logout)',
+    description:
+      'Marks the provided refresh token as used so it cannot be rotated again. ' +
+      'Idempotent — succeeds even if the token was already revoked.',
+  })
+  @ApiBody({ type: LogoutDto })
+  @ApiResponse({ status: 200, type: MessageResponseDto })
+  @ApiResponse({ status: 401, description: 'Missing or invalid access token' })
+  async logout(@Body() dto: LogoutDto): Promise<MessageResponseDto> {
+    await this.auth.revokeRefreshToken(dto.refreshToken);
+    return { message: 'Logged out successfully.' };
+  }
+
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 3, ttl: 60_000 } })
@@ -68,11 +107,12 @@ export class AuthController {
   })
   @ApiBody({ type: ForgotPasswordDto })
   @ApiResponse({ status: 200, type: MessageResponseDto })
-  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<MessageResponseDto> {
+  async forgotPassword(
+    @Body() dto: ForgotPasswordDto,
+  ): Promise<MessageResponseDto> {
     await this.auth.forgotPassword(dto);
     return {
-      message:
-        'If an account exists for this email, a reset link was sent.',
+      message: 'If an account exists for this email, a reset link was sent.',
     };
   }
 
@@ -82,7 +122,9 @@ export class AuthController {
   @ApiBody({ type: ResetPasswordDto })
   @ApiResponse({ status: 200, type: MessageResponseDto })
   @ApiResponse({ status: 401, description: 'Invalid or expired token' })
-  async resetPassword(@Body() dto: ResetPasswordDto): Promise<MessageResponseDto> {
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+  ): Promise<MessageResponseDto> {
     await this.auth.resetPassword(dto);
     return { message: 'Password has been reset. You can sign in now.' };
   }
@@ -104,11 +146,14 @@ export class AuthController {
   @ApiOperation({
     summary: 'Google OAuth callback',
     description:
-      'Exchanges the code, creates or links the user, then redirects to the frontend with accessToken query param (integrate with SPA carefully).',
+      'Exchanges the code, creates or links the user, then redirects to the frontend with accessToken and refreshToken query params.',
   })
   @ApiQuery({ name: 'code', required: false })
   @ApiQuery({ name: 'error', required: false })
-  @ApiResponse({ status: 302, description: 'Redirect to frontend with token or error' })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirect to frontend with tokens or error',
+  })
   async googleCallback(
     @Query('code') code: string | undefined,
     @Query('error') oauthError: string | undefined,
@@ -127,22 +172,19 @@ export class AuthController {
     }
 
     if (!code) {
-      res.redirect(
-        HttpStatus.FOUND,
-        `${frontendBase}/signin?error=missing_code`,
-      );
+      res.redirect(HttpStatus.FOUND, `${frontendBase}/signin?error=missing_code`);
       return;
     }
 
     try {
-      const { accessToken } = await this.auth.completeGoogleOAuth(code);
-      const redirectUrl = `${frontendBase}/dashboard?accessToken=${encodeURIComponent(accessToken)}`;
+      const { accessToken, refreshToken } = await this.auth.completeGoogleOAuth(code);
+      const redirectUrl =
+        `${frontendBase}/dashboard` +
+        `?accessToken=${encodeURIComponent(accessToken)}` +
+        `&refreshToken=${encodeURIComponent(refreshToken)}`;
       res.redirect(HttpStatus.FOUND, redirectUrl);
     } catch {
-      res.redirect(
-        HttpStatus.FOUND,
-        `${frontendBase}/signin?error=oauth_failed`,
-      );
+      res.redirect(HttpStatus.FOUND, `${frontendBase}/signin?error=oauth_failed`);
     }
   }
 

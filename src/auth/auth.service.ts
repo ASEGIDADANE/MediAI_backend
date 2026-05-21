@@ -20,11 +20,21 @@ const BCRYPT_ROUNDS = 12;
 const RESET_TOKEN_BYTES = 32;
 const RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+const REFRESH_TOKEN_BYTES = 64;
+const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const MAX_REFRESH_TOKENS_PER_USER = 5;
+
 export type AuthUserView = {
   id: string;
   email: string;
   emailVerified: boolean;
   lastLoginAt: string | null;
+};
+
+export type TokenPair = {
+  accessToken: string;
+  refreshToken: string;
+  user: AuthUserView;
 };
 
 @Injectable()
@@ -36,11 +46,15 @@ export class AuthService {
     private readonly email: EmailService,
   ) {}
 
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
   }
 
-  private hashResetToken(raw: string): string {
+  private hashToken(raw: string): string {
     return createHash('sha256').update(raw).digest('hex');
   }
 
@@ -68,6 +82,57 @@ export class AuthService {
     return new OAuth2Client(clientId, clientSecret, redirectUri);
   }
 
+  // ---------------------------------------------------------------------------
+  // Token issuance
+  // ---------------------------------------------------------------------------
+
+  private async signAccessToken(userId: string, email: string): Promise<string> {
+    const expiresIn = (
+      this.config.get<string>('ACCESS_TOKEN_EXPIRES', '15m')
+    ) as import('@nestjs/jwt').JwtSignOptions['expiresIn'];
+    return this.jwt.signAsync({ sub: userId, email }, { expiresIn });
+  }
+
+  /**
+   * Issues an access token + refresh token pair.
+   * Stores the hashed refresh token in the DB.
+   * Prunes oldest tokens when the user exceeds MAX_REFRESH_TOKENS_PER_USER.
+   */
+  private async issueTokenPair(
+    userId: string,
+    email: string,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    const accessToken = await this.signAccessToken(userId, email);
+
+    // Generate raw refresh token — only the hash is stored
+    const rawRefresh = randomBytes(REFRESH_TOKEN_BYTES).toString('hex');
+    const tokenHash = this.hashToken(rawRefresh);
+    const expiresAt = new Date(Date.now() + REFRESH_TTL_MS);
+
+    // Prune oldest tokens if user already has MAX_REFRESH_TOKENS_PER_USER
+    const existing = await this.prisma.refreshToken.findMany({
+      where: { userId, usedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (existing.length >= MAX_REFRESH_TOKENS_PER_USER) {
+      const toDelete = existing
+        .slice(0, existing.length - MAX_REFRESH_TOKENS_PER_USER + 1)
+        .map((t) => t.id);
+      await this.prisma.refreshToken.deleteMany({ where: { id: { in: toDelete } } });
+    }
+
+    await this.prisma.refreshToken.create({
+      data: { userId, tokenHash, expiresAt },
+    });
+
+    return { accessToken, refreshToken: rawRefresh };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Google OAuth
+  // ---------------------------------------------------------------------------
+
   isGoogleOAuthConfigured(): boolean {
     return this.getGoogleClient() !== null;
   }
@@ -89,7 +154,7 @@ export class AuthService {
     });
   }
 
-  async completeGoogleOAuth(code: string): Promise<{ accessToken: string; user: AuthUserView }> {
+  async completeGoogleOAuth(code: string): Promise<TokenPair> {
     const client = this.getGoogleClient();
     if (!client) {
       throw new ServiceUnavailableException('Google OAuth is not configured');
@@ -107,10 +172,9 @@ export class AuthService {
       throw new UnauthorizedException('Google did not return an access token');
     }
 
-    const profileRes = await fetch(
-      'https://www.googleapis.com/oauth2/v2/userinfo',
-      { headers: { Authorization: `Bearer ${tokens.access_token}` } },
-    );
+    const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
     if (!profileRes.ok) {
       throw new UnauthorizedException('Could not load Google profile');
     }
@@ -139,13 +203,7 @@ export class AuthService {
     const now = new Date();
     if (!user) {
       user = await this.prisma.user.create({
-        data: {
-          email,
-          googleId,
-          passwordHash: null,
-          emailVerifiedAt: now,
-          lastLoginAt: now,
-        },
+        data: { email, googleId, passwordHash: null, emailVerifiedAt: now, lastLoginAt: now },
       });
     } else {
       const updates: {
@@ -157,21 +215,18 @@ export class AuthService {
       if (user.googleId !== googleId) updates.googleId = googleId;
       if (this.normalizeEmail(user.email) !== email) updates.email = email;
       if (!user.emailVerifiedAt) updates.emailVerifiedAt = now;
-      user = await this.prisma.user.update({
-        where: { id: user.id },
-        data: updates,
-      });
+      user = await this.prisma.user.update({ where: { id: user.id }, data: updates });
     }
 
-    const accessToken = await this.signAccessToken(user.id, user.email);
-    return { accessToken, user: this.toUserView(user) };
+    const { accessToken, refreshToken } = await this.issueTokenPair(user.id, user.email);
+    return { accessToken, refreshToken, user: this.toUserView(user) };
   }
 
-  private async signAccessToken(userId: string, email: string): Promise<string> {
-    return this.jwt.signAsync({ sub: userId, email });
-  }
+  // ---------------------------------------------------------------------------
+  // Register / Login
+  // ---------------------------------------------------------------------------
 
-  async register(dto: RegisterDto): Promise<{ accessToken: string; user: AuthUserView }> {
+  async register(dto: RegisterDto): Promise<TokenPair> {
     const email = this.normalizeEmail(dto.email);
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -184,11 +239,11 @@ export class AuthService {
       data: { email, passwordHash, lastLoginAt: now },
     });
 
-    const accessToken = await this.signAccessToken(user.id, user.email);
-    return { accessToken, user: this.toUserView(user) };
+    const { accessToken, refreshToken } = await this.issueTokenPair(user.id, user.email);
+    return { accessToken, refreshToken, user: this.toUserView(user) };
   }
 
-  async login(dto: LoginDto): Promise<{ accessToken: string; user: AuthUserView }> {
+  async login(dto: LoginDto): Promise<TokenPair> {
     const email = this.normalizeEmail(dto.email);
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user?.passwordHash) {
@@ -205,44 +260,102 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    const accessToken = await this.signAccessToken(updated.id, updated.email);
-    return { accessToken, user: this.toUserView(updated) };
+    const { accessToken, refreshToken } = await this.issueTokenPair(updated.id, updated.email);
+    return { accessToken, refreshToken, user: this.toUserView(updated) };
   }
+
+  // ---------------------------------------------------------------------------
+  // Refresh token rotation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Validates a raw refresh token, marks it as used (in a transaction),
+   * and issues a fresh token pair (rotation).
+   * Throws 401 if the token is invalid, expired, or already used.
+   */
+  async rotateRefreshToken(rawToken: string): Promise<TokenPair> {
+    const tokenHash = this.hashToken(rawToken);
+
+    const record = await this.prisma.refreshToken.findFirst({
+      where: { tokenHash, usedAt: null, expiresAt: { gt: new Date() } },
+      include: { user: true },
+    });
+
+    if (!record) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    // Mark old token as used and issue new pair atomically
+    const [, newPair] = await this.prisma.$transaction(async (tx) => {
+      await tx.refreshToken.update({
+        where: { id: record.id },
+        data: { usedAt: new Date() },
+      });
+
+      const rawRefresh = randomBytes(REFRESH_TOKEN_BYTES).toString('hex');
+      const newHash = this.hashToken(rawRefresh);
+      const expiresAt = new Date(Date.now() + REFRESH_TTL_MS);
+
+      await tx.refreshToken.create({
+        data: { userId: record.userId, tokenHash: newHash, expiresAt },
+      });
+
+      const accessToken = await this.signAccessToken(record.userId, record.user.email);
+      return [null, { accessToken, refreshToken: rawRefresh }];
+    });
+
+    return {
+      accessToken: newPair.accessToken,
+      refreshToken: newPair.refreshToken,
+      user: this.toUserView(record.user),
+    };
+  }
+
+  /**
+   * Revokes a specific refresh token (logout).
+   * Silently succeeds if the token is not found (idempotent).
+   */
+  async revokeRefreshToken(rawToken: string): Promise<void> {
+    const tokenHash = this.hashToken(rawToken);
+    await this.prisma.refreshToken.updateMany({
+      where: { tokenHash, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Password reset
+  // ---------------------------------------------------------------------------
 
   async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
     const email = this.normalizeEmail(dto.email);
     const user = await this.prisma.user.findUnique({ where: { email } });
-
-    const genericMessage =
-      'If an account exists for this email, a reset link was sent.';
 
     if (!user?.passwordHash) {
       return;
     }
 
     const raw = randomBytes(RESET_TOKEN_BYTES).toString('hex');
-    const tokenHash = this.hashResetToken(raw);
+    const tokenHash = this.hashToken(raw);
     const expiresAt = new Date(Date.now() + RESET_TTL_MS);
 
     await this.prisma.passwordResetToken.create({
       data: { userId: user.id, tokenHash, expiresAt },
     });
 
-    const frontend = this.config.get<string>('FRONTEND_URL', 'http://localhost:3000').replace(/\/$/, '');
+    const frontend = this.config
+      .get<string>('FRONTEND_URL', 'http://localhost:3000')
+      .replace(/\/$/, '');
     const resetUrl = `${frontend}/reset-password?token=${encodeURIComponent(raw)}`;
 
     await this.email.sendPasswordResetLink(email, resetUrl);
   }
 
   async resetPassword(dto: ResetPasswordDto): Promise<void> {
-    const tokenHash = this.hashResetToken(dto.token);
+    const tokenHash = this.hashToken(dto.token);
 
     const record = await this.prisma.passwordResetToken.findFirst({
-      where: {
-        tokenHash,
-        usedAt: null,
-        expiresAt: { gt: new Date() },
-      },
+      where: { tokenHash, usedAt: null, expiresAt: { gt: new Date() } },
       include: { user: true },
     });
 
@@ -263,6 +376,10 @@ export class AuthService {
       }),
     ]);
   }
+
+  // ---------------------------------------------------------------------------
+  // Profile
+  // ---------------------------------------------------------------------------
 
   async getProfile(userId: string): Promise<AuthUserView> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
